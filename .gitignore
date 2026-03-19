@@ -2,3 +2,4 @@
 auth.json
 staging/
 node_modules/
+*.log

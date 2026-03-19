@@ -1,0 +1,35 @@
+services:
+  # ── Watcher ──────────────────────────────────────────────────
+  # Monitors Zotero storage/ for new PDFs, copies them to staging/
+  watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.watcher
+    env_file: .env
+    volumes:
+      - ${ZOTERO_STORAGE_PATH}:/zotero/storage:ro
+      - ./staging:/app/staging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    labels:
+      - "com.pipeline.service=research-automation"
+
+  # ── Pipeline ─────────────────────────────────────────────────
+  # Processes staged PDFs → AI analysis → Obsidian vault notes
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    env_file: .env
+    volumes:
+      - ./staging:/app/staging:ro
+      - ./agents:/app/agents:ro
+      - ${NOTEBOOKLM_MCP_PATH:-.notebooklm-mcp}:/root/.notebooklm-mcp:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - watcher
+    restart: unless-stopped
+    labels:
+      - "com.pipeline.service=research-automation"

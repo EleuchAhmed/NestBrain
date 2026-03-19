@@ -1,0 +1,33 @@
+# ── Pipeline Service ────────────────────────────────────────────
+# Runs the research pipeline agent: processes staged PDFs,
+# calls MCP tools, pushes notes to Obsidian via REST API
+# ────────────────────────────────────────────────────────────────
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# System deps — curl is used by HEALTHCHECK to ping Obsidian API
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Layer-cache npm install before copying source
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Install tsx globally for running TypeScript directly
+RUN npm install -g tsx
+
+# Copy agent source
+COPY agents/ /app/agents/
+COPY tsconfig.json /app/tsconfig.json
+
+# Non-root user
+RUN chown -R node:node /app
+USER node
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -sf -H "Authorization: Bearer $OBSIDIAN_API_KEY" \
+      http://host.docker.internal:27123/ || exit 1
+
+CMD ["npx", "tsx", "/app/agents/pipeline.ts"]

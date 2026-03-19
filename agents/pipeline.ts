@@ -32,7 +32,7 @@ config({ path: path.resolve(__dirname, "..", ".env") });
 
 const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? "";
 const OBSIDIAN_API_KEY: string = process.env.OBSIDIAN_API_KEY ?? "";
-const OBSIDIAN_API_BASE = "http://localhost:27123";
+const OBSIDIAN_API_BASE = `http://${process.env.OBSIDIAN_HOST ?? "localhost"}:27123`;
 
 // ── Folder routing ─────────────────────────────────────────────
 
