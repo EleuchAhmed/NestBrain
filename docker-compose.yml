@@ -6,6 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile.watcher
     env_file: .env
+    environment:
+      - ZOTERO_STORAGE_PATH=/zotero/storage
     volumes:
       - ${ZOTERO_STORAGE_PATH}:/zotero/storage:ro
       - ./staging:/app/staging
@@ -22,10 +24,13 @@ services:
       context: .
       dockerfile: Dockerfile.pipeline
     env_file: .env
+    environment:
+      - OBSIDIAN_VAULT_PATH=/vault
     volumes:
       - ./staging:/app/staging:ro
       - ./agents:/app/agents:ro
       - ${NOTEBOOKLM_MCP_PATH:-.notebooklm-mcp}:/root/.notebooklm-mcp:ro
+      - ${OBSIDIAN_VAULT_PATH}:/vault:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
