@@ -1,0 +1,4 @@
+.env
+auth.json
+staging/
+node_modules/
