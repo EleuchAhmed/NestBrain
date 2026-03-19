@@ -14,7 +14,7 @@
  *   npx tsx agents/pipeline.ts --check-auth    # just verify auth
  *
  * Required env vars (from .env):
- *   OBSIDIAN_VAULT_PATH, OBSIDIAN_API_KEY, ANTHROPIC_API_KEY
+ *   OBSIDIAN_VAULT_PATH, OBSIDIAN_API_KEY, GEMINI_API_KEY
  */
 
 import * as fs from "node:fs";
@@ -22,6 +22,9 @@ import * as path from "node:path";
 import * as http from "node:http";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +36,21 @@ config({ path: path.resolve(__dirname, "..", ".env") });
 const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? "";
 const OBSIDIAN_API_KEY: string = process.env.OBSIDIAN_API_KEY ?? "";
 const OBSIDIAN_API_BASE = `http://${process.env.OBSIDIAN_HOST ?? "localhost"}:27123`;
+
+let mcpClient: Client | null = null;
+async function getMcpClient(): Promise<Client> {
+  if (mcpClient) return mcpClient;
+  const transport = new StdioClientTransport({
+    command: process.platform === "win32" ? "node.exe" : "node",
+    args: [path.resolve(__dirname, "..", "antigravity-notebooklm-mcp", "build", "index.js")]
+  });
+  mcpClient = new Client({ name: "research-pipeline", version: "1.0.0" }, { capabilities: {} });
+  await mcpClient.connect(transport);
+  return mcpClient;
+}
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? "");
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // ── Folder routing ─────────────────────────────────────────────
 
@@ -47,9 +65,20 @@ const FOLDER_ROUTES: Record<string, string> = {
  * Map a domain tag to the corresponding Obsidian vault subfolder.
  * Falls back to `00_Inbox` for unrecognised domains.
  */
-export function routeToFolder(domain: string): string {
+export function routeToFolder(domain: string, title: string = ""): string {
   const key = domain.toLowerCase().trim();
-  return FOLDER_ROUTES[key] ?? "00_Inbox";
+  if (FOLDER_ROUTES[key]) {
+    return FOLDER_ROUTES[key];
+  }
+
+  const titleLower = title.toLowerCase();
+  for (const [routeKey, folder] of Object.entries(FOLDER_ROUTES)) {
+    if (titleLower.includes(routeKey)) {
+      return folder;
+    }
+  }
+
+  return "00_Inbox";
 }
 
 // ── NotebookLM auth check ──────────────────────────────────────
@@ -131,11 +160,20 @@ export interface NoteMetadata {
  *   4. Technical manual
  *   5. Interconnections
  */
-export function renderNote(meta: NoteMetadata): string {
+export function renderNote(
+  slug: string,
+  meta: NoteMetadata,
+  generated: any,
+  collectionName: string = "",
+  sourceCount: number = 1
+): string {
   const frontmatter = [
     "---",
-    `title: "${meta.title.replace(/"/g, '\\"')}"`,
+    `title: "${generated.subject_title ? generated.subject_title.replace(/"/g, '\\"') : meta.title.replace(/"/g, '\\"')}"`,
     `cite-key: ${meta.citeKey}`,
+    `slug: ${slug}`,
+    `collection: "${collectionName}"`,
+    `source-count: ${sourceCount}`,
     `domain: ${meta.domain}`,
     `authors:`,
     ...meta.authors.map((a) => `  - "${a}"`),
@@ -148,7 +186,7 @@ export function renderNote(meta: NoteMetadata): string {
   ].join("\n");
 
   const body = `
-# ${meta.title}
+# ${generated.subject_title ? generated.subject_title : meta.title}
 
 > **Authors**: ${meta.authors.join(", ")}
 > **Year**: ${meta.year}
@@ -162,31 +200,37 @@ ${meta.abstract}
 
 ## The analogy
 
-${meta.analogy ?? "_Awaiting AI processing — the pipeline will populate this section with an intuitive analogy that maps the paper's core mechanism to an everyday concept._"}
+${generated.analogy ?? meta.analogy ?? "_Awaiting AI processing — the pipeline will populate this section with an intuitive analogy that maps the paper's core mechanism to an everyday concept._"}
 
 ---
 
 ## Why it matters
 
-${meta.whyItMatters ?? "_Awaiting AI processing — explains the real-world impact, what breaks without this, and why an engineer should care._"}
+${generated.whyItMatters ?? meta.whyItMatters ?? "_Awaiting AI processing — explains the real-world impact, what breaks without this, and why an engineer should care._"}
 
 ---
 
 ## Architecture diagram
 
-${meta.architectureDiagram ?? "```mermaid\nflowchart LR\n  A[Input] --> B[Process]\n  B --> C[Output]\n```\n\n_Awaiting AI processing — will be replaced with a domain-specific system diagram._"}
+${generated.architectureDiagram ?? meta.architectureDiagram ?? "\`\`\`mermaid\nflowchart LR\n  A[Input] --> B[Process]\n  B --> C[Output]\n\`\`\`\n\n_Awaiting AI processing — will be replaced with a domain-specific system diagram._"}
 
 ---
 
 ## Technical manual
 
-${meta.technicalManual ?? "_Awaiting AI processing — a dense, precise breakdown of internal mechanics, failure modes, and security boundaries._"}
+${generated.technicalManual ?? meta.technicalManual ?? "_Awaiting AI processing — a dense, precise breakdown of internal mechanics, failure modes, and security boundaries._"}
+
+---
+
+## Sources processed
+
+${collectionName ? "_Awaiting AI processing — will be populated by the agent with processed sources._" : "- `" + meta.citeKey + "`"}
 
 ---
 
 ## Interconnections
 
-${meta.interconnections ?? "_Awaiting AI processing — maps connections to other concepts in the vault, suggesting links to existing notes._"}
+${generated.interconnections ?? meta.interconnections ?? "_Awaiting AI processing — maps connections to other concepts in the vault, suggesting links to existing notes._"}
 `;
 
   return frontmatter + "\n" + body.trim() + "\n";
@@ -262,6 +306,43 @@ export function isDuplicate(citeKey: string): boolean {
   return false;
 }
 
+// ── Helpers & Classifiers ──────────────────────────────────────
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9- ]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export function collectionNoteExists(subjectTitle: string): string | false {
+  const slug = slugify(subjectTitle);
+  const pathsToCheck = [
+    path.join(VAULT_PATH, "20_Concepts", "Fullstack", `${slug}.md`),
+    path.join(VAULT_PATH, "20_Concepts", "Cyber", `${slug}.md`),
+    path.join(VAULT_PATH, "20_Concepts", "AI-Data", `${slug}.md`),
+    path.join(VAULT_PATH, "20_Concepts", "General-Arch", `${slug}.md`),
+    path.join(VAULT_PATH, "00_Inbox", `${slug}.md`),
+  ];
+  for (const p of pathsToCheck) {
+    if (fs.existsSync(p)) return p;
+  }
+  return false;
+}
+
+export function classifySource(item: any): string {
+  if (item.pdfPath && fs.existsSync(item.pdfPath)) {
+    return "pdf";
+  }
+  const url = item.url || "";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) {
+    return "youtube";
+  }
+  return "url";
+}
+
 // ── Pipeline ───────────────────────────────────────────────────
 
 /**
@@ -278,31 +359,102 @@ export function isDuplicate(citeKey: string): boolean {
  * populated by the NotebookLM MCP tools (manage_source, query_notebook).
  * This function provides the scaffolding; the AI agent fills the content.
  */
-export async function runPipeline(pdfPath: string): Promise<void> {
+export async function runPipeline(pdfPath: string, collectionName?: string): Promise<void> {
   const filename = path.basename(pdfPath, ".pdf");
   console.log(`\n━━━ Pipeline: ${filename} ━━━`);
 
   // Step 1: Build preliminary metadata from filename
-  const citeKey = filename
+  const cite_key = filename
     .replace(/^\d{8}T\d{6}Z_/, "")     // strip timestamp prefix from watcher
     .replace(/[^a-zA-Z0-9]/g, "-")
     .toLowerCase();
 
-  // Step 2: Duplicate check
-  if (isDuplicate(citeKey)) {
-    console.log(`⏭  Duplicate detected (cite-key: ${citeKey}). Skipping.`);
+  // If single-item mode, check for citeKey duplication
+  if (!collectionName && isDuplicate(cite_key)) {
+    console.log(`⏭  Duplicate detected (cite-key: ${cite_key}). Skipping.`);
     return;
   }
 
+  // Call NotebookLM MCP tools to analyze the source via manage_source & query_notebook
+  let generated: any;
+  try {
+    const notebookId = collectionName || "default-synthesis";
+    const rawSourceContent = fs.readFileSync(pdfPath, "base64");
+    
+    const mcp = await getMcpClient();
+    console.log(`🔌 Adding source to NotebookLM (ID: ${notebookId})...`);
+    await mcp.callTool({
+      name: "manage_source",
+      arguments: {
+        action: "add",
+        notebook_id: notebookId,
+        type: "text",
+        content: rawSourceContent,
+        title: filename
+      }
+    });
+
+    console.log(`📥 Querying NotebookLM for synthesis...`);
+    const queryResult = await mcp.callTool({
+      name: "query_notebook",
+      arguments: {
+        notebook_id: notebookId,
+        query: "Provide a comprehensive technical synthesis of this document, including core mechanics, analogies, real-world impact, architecture, and interconnections."
+      }
+    });
+    const notebookLmOutput = (queryResult.content as any)[0].text;
+
+    console.log(`🧠 Refining synthesis with Gemini Flash...`);
+    const prompt = `
+Extract and structure the following NotebookLM synthesis into a JSON object. Ensure it uses the following required schema exactly.
+
+{
+  "subject_title": "A short, descriptive title",
+  "analogy": "An intuitive analogy mapping the core mechanism",
+  "whyItMatters": "Explanation of real-world impact and what breaks without this",
+  "architectureDiagram": "A valid mermaid.js diagram starting with \`\`\`mermaid",
+  "technicalManual": "A dense, precise breakdown of internal mechanics, failure modes, and security boundaries",
+  "interconnections": "Connections to other concepts"
+}
+
+NotebookLM Synthesis:
+${notebookLmOutput}
+
+Return ONLY valid JSON. Avoid any markdown code block fences entirely, just raw JSON. Escape nested quotes. Use concise language.
+`;
+    const result = await geminiModel.generateContent(prompt);
+    const textResp = result.response.text();
+    const cleanJson = textResp.replace(/```(?:json)?\n?|```/gi, "").trim();
+    generated = JSON.parse(cleanJson);
+  } catch (err: any) {
+    console.error(`❌ Error in AI generation for ${filename}:`, err.message);
+    return; // Exit early to avoid writing a broken note
+  }
+
+  const slug = collectionName ? slugify(generated.subject_title) : cite_key;
+
+  if (collectionName) {
+    const existingPath = collectionNoteExists(generated.subject_title);
+    if (existingPath) {
+      console.log(`Already exists at ${existingPath}`);
+      return; 
+    }
+  }
+
+  // Save raw response as audit trail
+  const auditPath = path.join(__dirname, "..", "staging", `${slug}-notebooklm-response.json`);
+  fs.writeFileSync(auditPath, JSON.stringify(generated, null, 2), "utf8");
+  console.log(`[pipeline] Audit saved: ${auditPath}`);
+
   // Step 3: Default domain — in production the AI classifies this
   const domain = "ai-data";
-  const folder = routeToFolder(domain);
+  const folder = routeToFolder(domain, generated.subject_title);
   console.log(`📂  Routing to: ${folder}`);
 
-  // Step 4: Render note (placeholder sections — AI fills these later)
+  // Step 4: Render note
   const meta: NoteMetadata = {
-    title: filename.replace(/[-_]/g, " "),
-    citeKey,
+    title: generated.subject_title,
+    citeKey: cite_key,
     domain,
     authors: ["Unknown Author"],
     year: new Date().getFullYear().toString(),
@@ -310,10 +462,11 @@ export async function runPipeline(pdfPath: string): Promise<void> {
     tags: [domain, "seedling"],
   };
 
-  const markdown = renderNote(meta);
+  const sourceCount = collectionName ? 3 : 1; // Assuming 3 for mock collections
+  const markdown = renderNote(slug, meta, generated, collectionName || "", sourceCount);
 
   // Step 5: Write to vault
-  const vaultRelPath = `${folder}/${citeKey}.md`;
+  const vaultRelPath = `${folder}/${slug}.md`;
   console.log(`📝  Writing: ${vaultRelPath}`);
 
   try {
@@ -322,7 +475,6 @@ export async function runPipeline(pdfPath: string): Promise<void> {
       console.log(`✅  Note created successfully.`);
     } else {
       console.error(`❌  Obsidian API returned ${resp.status}: ${resp.body}`);
-      // Fallback: write directly to disk if API is unreachable
       const diskPath = path.join(VAULT_PATH, vaultRelPath);
       const diskDir = path.dirname(diskPath);
       if (!fs.existsSync(diskDir)) fs.mkdirSync(diskDir, { recursive: true });
@@ -331,7 +483,6 @@ export async function runPipeline(pdfPath: string): Promise<void> {
     }
   } catch (err) {
     console.error(`❌  Obsidian API unreachable: ${err}`);
-    // Fallback: write directly to disk
     const diskPath = path.join(VAULT_PATH, vaultRelPath);
     const diskDir = path.dirname(diskPath);
     if (!fs.existsSync(diskDir)) fs.mkdirSync(diskDir, { recursive: true });
@@ -352,6 +503,19 @@ async function main() {
     process.exit(auth.ok ? 0 : 1);
   }
 
+  const collectionIdx = args.indexOf("--collection");
+  let collectionName = collectionIdx !== -1 ? args[collectionIdx + 1] : process.env.COLLECTION_NAME;
+
+  if (!collectionName) {
+    console.error("❌  Error: Collection synthesis is the standard choice. You MUST provide a collection name.");
+    console.error("Usage: npx tsx agents/pipeline.ts --collection \"Your Collection Name\" OR set COLLECTION_NAME env var.");
+    process.exit(1);
+  }
+  if (collectionName.startsWith("--")) {
+     console.error("❌  Error: Invalid collection name provided.");
+     process.exit(1);
+  }
+
   // Default: process all PDFs in staging/
   const stagingDir = path.resolve(__dirname, "..", "staging");
   if (!fs.existsSync(stagingDir)) {
@@ -369,7 +533,7 @@ async function main() {
   console.log(`Found ${pdfs.length} PDF(s) in staging/.\n`);
 
   for (const pdf of pdfs) {
-    await runPipeline(path.join(stagingDir, pdf));
+    await runPipeline(path.join(stagingDir, pdf), collectionName);
   }
 
   console.log("\n━━━ Pipeline complete ━━━");
