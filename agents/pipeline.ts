@@ -95,20 +95,16 @@ interface AuthData {
   [key: string]: unknown;
 }
 
-/**
- * Verify that NotebookLM credentials exist and are not expired.
- * Returns `{ ok, message }`.
- */
 export function checkNotebookLMAuth(): { ok: boolean; message: string } {
-  if (!fs.existsSync(AUTH_PATH)) {
-    return {
-      ok: false,
-      message: `Auth file not found at ${AUTH_PATH}. Run: node antigravity-notebooklm-mcp/build/browser-auth.js`,
-    };
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const resolvedPath = path.join(home, ".notebooklm-mcp", "auth.json");
+  if (!fs.existsSync(resolvedPath)) {
+    return { ok: false, message: `NotebookLM auth file NOT FOUND at: ${resolvedPath}. Run authenticate.bat first.` };
   }
+  console.log(`[pipeline] Checking auth at: ${resolvedPath}`);
 
   try {
-    const raw = fs.readFileSync(AUTH_PATH, "utf-8");
+    const raw = fs.readFileSync(resolvedPath, "utf-8");
     const data: AuthData = JSON.parse(raw);
 
     if (!data.cookies) {
@@ -379,7 +375,18 @@ export async function runPipeline(pdfPath: string, collectionName?: string): Pro
   let generated: any;
   try {
     const notebookId = collectionName || "default-synthesis";
-    const rawSourceContent = fs.readFileSync(pdfPath, "base64");
+    const ext = path.extname(pdfPath).toLowerCase();
+    let content: string;
+    
+    if (ext === ".html") {
+      const rawHtml = fs.readFileSync(pdfPath, "utf8");
+      // Simple tag stripping for NotebookLM
+      content = rawHtml.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+    } else {
+      // For PDF, we'll try to send as base64 but warn that NotebookLM might need raw text
+      content = fs.readFileSync(pdfPath, "base64");
+      console.log(`⚠️  Warning: Sending binary PDF as text to NotebookLM. If synthesis is poor, consider converting to text first.`);
+    }
     
     const mcp = await getMcpClient();
     console.log(`🔌 Adding source to NotebookLM (ID: ${notebookId})...`);
@@ -389,7 +396,7 @@ export async function runPipeline(pdfPath: string, collectionName?: string): Pro
         action: "add",
         notebook_id: notebookId,
         type: "text",
-        content: rawSourceContent,
+        content: content,
         title: filename
       }
     });
@@ -422,7 +429,23 @@ ${notebookLmOutput}
 
 Return ONLY valid JSON. Avoid any markdown code block fences entirely, just raw JSON. Escape nested quotes. Use concise language.
 `;
-    const result = await geminiModel.generateContent(prompt);
+    // Add retry for Gemini to handle 429s from free tier
+    let result: any;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        result = await geminiModel.generateContent(prompt);
+        break;
+      } catch (gemError: any) {
+        if (gemError.message.includes("429") && retries > 1) {
+          console.warn(`⚠️  Gemini 429 (Too Many Requests). Retrying in 10s...`);
+          await new Promise(r => setTimeout(r, 10000));
+          retries--;
+        } else {
+          throw gemError;
+        }
+      }
+    }
     const textResp = result.response.text();
     const cleanJson = textResp.replace(/```(?:json)?\n?|```/gi, "").trim();
     generated = JSON.parse(cleanJson);
@@ -523,17 +546,20 @@ async function main() {
     process.exit(1);
   }
 
-  const pdfs = fs.readdirSync(stagingDir).filter((f) => f.toLowerCase().endsWith(".pdf"));
+  const sources = fs.readdirSync(stagingDir).filter((f) => {
+    const low = f.toLowerCase();
+    return low.endsWith(".pdf") || low.endsWith(".html");
+  });
 
-  if (pdfs.length === 0) {
-    console.log("No PDFs found in staging/. Nothing to process.");
+  if (sources.length === 0) {
+    console.log("No sources (.pdf or .html) found in staging/. Nothing to process.");
     return;
   }
 
-  console.log(`Found ${pdfs.length} PDF(s) in staging/.\n`);
+  console.log(`Found ${sources.length} source(s) in staging/.\n`);
 
-  for (const pdf of pdfs) {
-    await runPipeline(path.join(stagingDir, pdf), collectionName);
+  for (const source of sources) {
+    await runPipeline(path.join(stagingDir, source), collectionName);
   }
 
   console.log("\n━━━ Pipeline complete ━━━");
