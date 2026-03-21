@@ -17,6 +17,27 @@ services:
     labels:
       - "com.pipeline.service=research-automation"
 
+  # ── Ollama ───────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_model_data:/root/.ollama
+    restart: unless-stopped
+    labels:
+      - "com.pipeline.service=research-automation"
+
+  # ── Ollama Init ──────────────────────────────────────────────
+  # Pulls the deepseek-r1:14b model on first run
+  ollama-init:
+    image: ollama/ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    command: pull deepseek-r1:14b
+    depends_on:
+      - ollama
+    labels:
+      - "com.pipeline.service=research-automation"
+
   # ── Pipeline ─────────────────────────────────────────────────
   # Processes staged PDFs → AI analysis → Obsidian vault notes
   pipeline:
@@ -25,8 +46,10 @@ services:
       dockerfile: Dockerfile.pipeline
     env_file: .env
     environment:
+      - OLLAMA_HOST=http://ollama:11434
       - OBSIDIAN_VAULT_PATH=/vault
       - COLLECTION_NAME=${COLLECTION_NAME:-Research Synthesis}
+      - NOTEBOOKLM_MCP_HOST=host.docker.internal
     volumes:
       - ./staging:/app/staging
       - ./agents:/app/agents:ro
@@ -36,6 +59,10 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - watcher
+      - ollama
     restart: unless-stopped
     labels:
       - "com.pipeline.service=research-automation"
+
+volumes:
+  ollama_model_data:

@@ -13,14 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 
 # Layer-cache npm install before copying source
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-# Install tsx globally for running TypeScript directly
-RUN npm install -g tsx
-
-# Copy agent source
+# Copy agent and source config
 COPY agents/ /app/agents/
+COPY mcp-servers/ /app/mcp-servers/
 COPY tsconfig.json /app/tsconfig.json
+
+# Install typescript globally and build the project
+RUN npm install -g typescript && tsc
 
 # Non-root user
 RUN chown -R node:node /app
@@ -30,4 +31,4 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -sf -H "Authorization: Bearer $OBSIDIAN_API_KEY" \
       http://host.docker.internal:27123/ || exit 1
 
-CMD ["npx", "tsx", "/app/agents/pipeline.ts"]
+ENTRYPOINT ["node", "/app/dist/agents/pipeline.js"]
