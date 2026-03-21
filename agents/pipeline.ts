@@ -154,14 +154,16 @@ export function renderNote(
 
 // ── Pipeline ───────────────────────────────────────────────────
 
+// ── Pipeline ───────────────────────────────────────────────────
+
 export async function runCollectionPipeline(collectionName: string, stagingDir: string): Promise<void> {
   const sources = fs.readdirSync(stagingDir).filter((f) => {
     const low = f.toLowerCase();
-    return low.endsWith(".pdf") || low.endsWith(".html") || low.endsWith(".link") || low.endsWith(".txt");
+    return low.endsWith(".pdf") || low.endsWith(".html") || low.endsWith(".link") || low.endsWith(".url") || low.endsWith(".txt");
   });
 
   if (sources.length === 0) {
-    console.log("No sources found in staging/. Nothing to process.");
+    console.log(`No sources found in staging/${collectionName}. Skipping.`);
     return;
   }
 
@@ -181,24 +183,26 @@ export async function runCollectionPipeline(collectionName: string, stagingDir: 
       let type: "text" | "url" | "drive" = "text";
       let ref = source;
 
-      const rawFile = fs.readFileSync(filePath, "utf8");
-      // YouTube pattern check
-      const ytMatch = rawFile.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[^\s"']+/i);
-
-      if (ytMatch) {
-        content = ytMatch[0];
-        type = "url";
-        ref = content;
-      } else if (ext === ".html") {
-        const $ = cheerio.load(rawFile);
-        content = $.text().replace(/\s+/g, " ").trim();
-        type = "text";
-      } else if (ext === ".pdf") {
+      if (ext === ".pdf") {
         content = fs.readFileSync(filePath, "base64");
         console.log(`⚠️ Warning: Sending binary PDF as base64 text...`);
       } else {
-        content = rawFile.trim();
-        type = "text";
+        const rawFile = fs.readFileSync(filePath, "utf8");
+        // Check for URL in .link, .url, or text content (especially YouTube)
+        const urlMatch = rawFile.match(/https?:\/\/[^\s"']+/i);
+
+        if (urlMatch) {
+          content = urlMatch[0];
+          type = "url";
+          ref = content;
+        } else if (ext === ".html") {
+          const $ = cheerio.load(rawFile);
+          content = $.text().replace(/\s+/g, " ").trim();
+          type = "text";
+        } else {
+          content = rawFile.trim();
+          type = "text";
+        }
       }
 
       console.log(`🔌 Adding ${source} (type: ${type})...`);
@@ -219,7 +223,7 @@ export async function runCollectionPipeline(collectionName: string, stagingDir: 
 
   if (successfulIngests === 0) {
     console.error(`❌ Abort: Zero sources were successfully ingested.`);
-    process.exit(1);
+    return;
   }
 
   // Step 2: NotebookLM Query and Media Fetching
@@ -405,23 +409,42 @@ async function main() {
     fs.mkdirSync(assetsDir, { recursive: true });
   }
 
-  const collectionIdx = args.indexOf("--collection");
-  const collectionName = collectionIdx !== -1 ? args[collectionIdx + 1] : process.env.COLLECTION_NAME;
-
-  if (!collectionName || collectionName.startsWith("--")) {
-    console.error("❌ Error: You MUST provide a collection name.");
-    process.exit(1);
-  }
-
   const stagingDir = path.resolve(__dirname, "..", "staging");
   if (!fs.existsSync(stagingDir)) {
     console.error(`Staging directory not found: ${stagingDir}`);
     process.exit(1);
   }
 
-  await runCollectionPipeline(collectionName, stagingDir);
+  // Multi-collection support: scan subdirectories in staging/
+  const subdirs = fs.readdirSync(stagingDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  if (subdirs.length > 0) {
+    console.log(`📂 Found ${subdirs.length} collections in staging/. Processing sequentially...`);
+    for (const subdir of subdirs) {
+      const collectionPath = path.join(stagingDir, subdir);
+      await runCollectionPipeline(subdir, collectionPath);
+    }
+  } else {
+    // Legacy support: check if there are files directly in staging/
+    const collectionIdx = args.indexOf("--collection");
+    const collectionName = collectionIdx !== -1 ? args[collectionIdx + 1] : process.env.COLLECTION_NAME;
+
+    if (collectionName) {
+      await runCollectionPipeline(collectionName, stagingDir);
+    } else {
+      console.log("No collection folders found in staging/ and no --collection flag provided.");
+    }
+  }
+
   console.log("\n━━━ Pipeline complete ━━━");
 }
+
+main().catch((err) => {
+  console.error("Fatal:", err);
+  process.exit(1);
+});
 
 main().catch((err) => {
   console.error("Fatal:", err);

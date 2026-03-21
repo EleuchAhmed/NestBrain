@@ -8,8 +8,9 @@ services:
     env_file: .env
     environment:
       - ZOTERO_STORAGE_PATH=/zotero/storage
+      - ZOTERO_DB_PATH=/zotero/zotero.sqlite
     volumes:
-      - ${ZOTERO_STORAGE_PATH}:/zotero/storage:ro
+      - ${ZOTERO_DATA_DIR:-C:\Users\Mega Pc\Zotero}:/zotero:ro
       - ./staging:/app/staging
     extra_hosts:
       - "host.docker.internal:host-gateway"
