@@ -11,9 +11,8 @@ Usage:
 Required env vars (from .env):
     ZOTERO_STORAGE_PATH  — path to Zotero's storage/ dir
                            (default: ~/Zotero/storage)
-    STAGING_DIR          — path to the staging directory
-                           (default: ./staging)import os
-import sys
+                            (default: ./staging)
+import os
 import shutil
 import time
 import signal
@@ -181,32 +180,6 @@ def main() -> None:
     log.info("Watching : %s", storage)
     log.info("Staging  : %s", STAGING_DIR)
     log.info("Database : %s", ZOTERO_DB_PATH)
-
-    handler = PDFHandler(STAGING_DIR)
-    observer = Observer()
-    observer.schedule(handler, str(storage), recursive=True)
-    observer.start()
-
-    # Graceful shutdown on Ctrl+C / SIGTERM
-    def _shutdown(signum, frame):
-        log.info("Shutting down watcher…")
-        observer.stop()
-
-    signal.signal(signal.SIGINT, _shutdown)
-    signal.signal(signal.SIGTERM, _shutdown)
-
-    try:
-        while observer.is_alive():
-            observer.join(timeout=1)
-    finally:
-        observer.stop()
-        observer.join()
-        log.info("Watcher stopped.")
-
-
-if __name__ == "__main__":
-    main()
-%s", STAGING_DIR)
 
     handler = PDFHandler(STAGING_DIR)
     observer = Observer()
