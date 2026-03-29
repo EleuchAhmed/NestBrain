@@ -1,8 +1,8 @@
+import sys
 import os
 import json
 import logging
 import asyncio
-import subprocess
 from pathlib import Path
 from typing import Optional
 from notebooklm.auth import AuthTokens
@@ -16,11 +16,8 @@ log_dir.mkdir(exist_ok=True)
 logger = logging.getLogger("notebooklm_auth")
 logger.setLevel(logging.INFO)
 file_handler = logging.FileHandler(log_dir / "notebooklm_auth.log")
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
-
 # Ensure console logs are also shown
-console_handler = logging.StreamHandler()
+console_handler = logging.StreamHandler(sys.stderr)
 console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 logger.addHandler(console_handler)
 
@@ -89,27 +86,21 @@ async def _trigger_browser_fallback() -> bool:
     logger.critical("Browser fallback failed 3 consecutive times. Circuit breaker tripped.")
     return False
 
-async def get_client() -> NotebookLMClient:
+async def get_auth_tokens() -> AuthTokens:
     """
     Primary interface for pipeline integration.
-    Returns an authenticated, ready-to-use NotebookLMClient.
-    
-    Flow:
-    1. Load cached AuthTokens
-    2. Instantiate NotebookLMClient and attempt `refresh_auth()` pre-flight ping
-    3. If session is stale/invalid, trigger browser-auth fallback
-    4. Reload tokens and return client
+    Returns authenticated AuthTokens ready for use with NotebookLMClient.
     """
     tokens = _load_auth_tokens()
     
+    # Pre-flight ping: check if CSRF token is still valid
     if tokens:
         logger.info("Cached auth tokens found. Validating session health...")
         try:
-            client = NotebookLMClient(tokens)
-            # Pre-flight ping: check if CSRF token is still valid, and refresh if stale
-            await client.refresh_auth()
-            logger.info("Session health check passed. Client is ready.")
-            return client
+            async with NotebookLMClient(tokens) as client:
+                await client.refresh_auth()
+            logger.info("Session health check passed.")
+            return tokens
         except (AuthError, NotebookLMError, ValueError) as e:
             logger.warning(f"Session health check failed: {e}. Cookies may have expired.")
     else:
@@ -129,13 +120,12 @@ async def get_client() -> NotebookLMClient:
         logger.critical("Fallback reported success but auth.json is still missing/invalid.")
         raise RuntimeError("Failed to load new auth tokens after fallback.")
         
-    client = NotebookLMClient(new_tokens)
-    
     # Final pre-flight verification
     try:
-        await client.refresh_auth()
-        logger.info("Recovered session successfully. Client is ready.")
-        return client
+        async with NotebookLMClient(new_tokens) as client:
+            await client.refresh_auth()
+        logger.info("Recovered session successfully.")
+        return new_tokens
     except Exception as e:
         logger.critical(f"Final session validation failed after fallback: {e}")
         raise
@@ -143,7 +133,7 @@ async def get_client() -> NotebookLMClient:
 if __name__ == "__main__":
     # Small test sequence for the module
     async def test():
-        client = await get_client()
-        print("Test complete. Client successfully initialized.")
+        tokens = await get_auth_tokens()
+        print("Test complete. Tokens successfully retrieved.")
         
     asyncio.run(test())

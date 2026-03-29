@@ -15,7 +15,7 @@ import * as http from "node:http";
 import { fileURLToPath } from "node:url";
 import * as os from "node:os";
 import { config } from "dotenv";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import * as util from "node:util";
 const execFileAsync = util.promisify(execFile);
 import Database from "better-sqlite3";
@@ -41,8 +41,11 @@ async function callNotebookLmPython(action: string, args: any): Promise<any> {
   const payload = JSON.stringify({ action, args });
   
   return new Promise((resolve, reject) => {
-    const { spawn } = require("node:child_process");
     const child = spawn(process.platform === "win32" ? "python" : "python3", [scriptPath]);
+    
+    // Write the payload to the Python script's stdin
+    child.stdin.write(payload);
+    child.stdin.end();
     
     let stdoutData = "";
     let stderrData = "";
@@ -52,20 +55,25 @@ async function callNotebookLmPython(action: string, args: any): Promise<any> {
     
     child.on("close", (code: number) => {
       try {
-        const lines = stdoutData.trim().split('\\n');
-        const dataLine = lines[lines.length - 1] || "{}";
-        const data = JSON.parse(dataLine);
+        // Robust JSON extraction: look for the first '{' and last '}'
+        const firstBrace = stdoutData.indexOf("{");
+        const lastBrace = stdoutData.lastIndexOf("}");
+        
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+           throw new Error("No JSON object found in output");
+        }
+        
+        const jsonStr = stdoutData.substring(firstBrace, lastBrace + 1);
+        const data = JSON.parse(jsonStr);
+        
         if (data.error || code !== 0) throw new Error(data.error || `Process exited with code ${code}`);
         resolve(data);
       } catch (e: any) {
-        reject(new Error(`Python Bridge Error: ${e.message}\\nOutput: ${stdoutData.substring(0, 1000)}\\nStderr: ${stderrData.substring(0, 1000)}`));
+        reject(new Error(`Python Bridge Error: ${e.message}\nOutput: ${stdoutData.substring(0, 1000)}\nStderr: ${stderrData.substring(0, 1000)}`));
       }
     });
 
     child.on("error", (err: any) => reject(err));
-
-    child.stdin.write(payload);
-    child.stdin.end();
   });
 }
 
@@ -92,6 +100,15 @@ function loadRegistry(): PipelineRegistry {
 
 function saveRegistry(reg: PipelineRegistry): void {
   fs.writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2), "utf-8");
+}
+
+interface SynthesisResult {
+  academicSynthesis: string;
+  conceptualDeepDive: string;
+  actionableKnowledge: string;
+  knowledgeConnections: string;
+  criticalEvaluation: string;
+  glossary: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -336,16 +353,11 @@ function scanZoteroCollections(): ZoteroCollection[] {
 // ── STAGE 2: NotebookLM Knowledge Extraction ───────────────────
 
 const NOTEBOOKLM_QUERIES = [
-  "Provide a comprehensive overview of this source: its main thesis, core arguments, and conclusion.",
-  "What are the key concepts, theories, and frameworks introduced? Define each one in detail.",
-  "What methodology or approach is used? Describe the evidence, data, or reasoning presented.",
-  "What are the most important facts, statistics, findings, or claims in this source?",
-  "What are the limitations, open questions, controversies, or gaps identified?",
-  "What are the practical applications and real-world implications of this knowledge?",
-  "How does this source connect to or contrast with established knowledge in this field?",
-  "Generate a timeline of key events or developments mentioned if applicable.",
-  "Extract all key terminology and provide detailed definitions for each.",
-  "What are the most surprising, counterintuitive, or paradigm-shifting ideas in this source?",
+  "Extract the primary thesis, the 3-5 foundational arguments, and the ultimate conclusion. If there are exact, highly impactful quotes that summarize the main idea, include them.",
+  "Detail the methodology, data points, historical examples, or frameworks used to support the arguments. What specific evidence is most heavily relied upon?",
+  "Identify all domain-specific terminology, technical jargon, or unique concepts introduced. Provide concise definitions based on the context.",
+  "Identify any conflicting viewpoints, trade-offs, or non-obvious nuances across the sources. What do the experts disagree on?",
+  "Summarize the key real-world applications or sector-specific use cases (e.g., Enterprise, Healthcare, Legal) discussed."
 ];
 
 async function createNotebook(collectionName: string): Promise<string> {
@@ -356,17 +368,16 @@ async function createNotebook(collectionName: string): Promise<string> {
 
 async function ingestSourceToNotebook(notebookId: string, item: ZoteroItem): Promise<boolean> {
   try {
+    if (item.pdfPath && fs.existsSync(item.pdfPath)) {
+      log("🔌", `Adding PDF File: ${item.title} → ${item.pdfPath}`);
+      await callNotebookLmPython("ingestFile", { notebookId, path: item.pdfPath });
+      log("✅", `PDF source added: ${item.title}`);
+      return true;
+    }
     if (item.url) {
       log("🔌", `Adding URL source: ${item.title} → ${item.url}`);
       await callNotebookLmPython("ingestUrl", { notebookId, url: item.url });
       log("✅", `URL source added: ${item.title}`);
-      return true;
-    }
-    if (item.pdfPath && fs.existsSync(item.pdfPath)) {
-      log("🔌", `Adding PDF: ${item.title} → ${item.pdfPath}`);
-      const content = `[Source: ${item.title}]\n\n${item.abstract ? `Abstract: ${item.abstract}` : "No abstract available."}\n\nAuthors: ${item.authors || "Unknown"}\nDate: ${item.date || "Unknown"}`;
-      await callNotebookLmPython("ingestText", { notebookId, title: item.title, content });
-      log("✅", `PDF/Text source added: ${item.title}`);
       return true;
     }
     if (item.abstract) {
@@ -403,127 +414,109 @@ async function interrogateNotebook(notebookId: string): Promise<string[]> {
   return responses;
 }
 
-async function generateNotebookMedia(notebookId: string): Promise<{ audioUrl: string | null; videoUrl: string | null }> {
+async function generateNotebookMedia(notebookId: string, collectionName: string): Promise<{ audioPath: string | null; videoPath: string | null }> {
   log("🎬", `Requesting media artifacts (this may take up to 5 minutes)...`);
   try {
-    const data = await callNotebookLmPython("generateMedia", { notebookId });
-    if (data.audioUrl) log("✅", `Audio ready: ${data.audioUrl}`);
-    if (data.videoUrl) log("✅", `Video ready: ${data.videoUrl}`);
-    if (data.audioError) log("⚠️", `Audio generation failed: ${data.audioError}`);
-    if (data.videoError) log("⚠️", `Video generation failed: ${data.videoError}`);
-    return { audioUrl: data.audioUrl || null, videoUrl: data.videoUrl || null };
+    const assetsDir = path.join(VAULT_PATH, "assets");
+    if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+
+    const slug = collectionName.toLowerCase().replace(/[^a-z0-9]/g, "-");
+    
+    // Generate Video
+    log("🎥", "Generating Video Explainer...");
+    const videoData = await callNotebookLmPython("generateMedia", { notebookId, type: "video" });
+    let videoPath: string | null = null;
+    
+    if (videoData.status === "success" && videoData.artifactId) {
+      log("📥", `Downloading video for ${collectionName}...`);
+      const outputPath = path.join(assetsDir, `${slug}-overview.mp4`);
+      const downloadRes = await callNotebookLmPython("downloadMedia", { 
+        notebookId, 
+        type: "video", 
+        artifactId: videoData.artifactId,
+        outputPath 
+      });
+      videoPath = `assets/${path.basename(downloadRes.path)}`;
+      log("✅", `Video saved to: ${videoPath}`);
+    }
+
+    // Generate Audio
+    log("🎧", "Generating Audio Deep Dive...");
+    const audioData = await callNotebookLmPython("generateMedia", { notebookId, type: "audio" });
+    let audioPath: string | null = null;
+
+    if (audioData.status === "success" && audioData.artifactId) {
+      log("📥", `Downloading audio for ${collectionName}...`);
+      const outputPath = path.join(assetsDir, `${slug}-overview.wav`);
+      const downloadRes = await callNotebookLmPython("downloadMedia", { 
+        notebookId, 
+        type: "audio", 
+        artifactId: audioData.artifactId,
+        outputPath 
+      });
+      audioPath = `assets/${path.basename(downloadRes.path)}`;
+      log("✅", `Audio saved to: ${audioPath}`);
+    }
+
+    return { audioPath, videoPath };
   } catch (err: any) {
-    logErr(`Media generation failed:`, err);
-    return { audioUrl: null, videoUrl: null };
+    logErr(`Media generation/download failed:`, err);
+    return { audioPath: null, videoPath: null };
   }
 }
 
-// ── STAGE 3: DeepSeek Synthesis ────────────────────────────────
+async function runDeepSeekSynthesis(
+  collectionName: string, 
+  notebookId: string | null, 
+  interrogationResponses: string[]
+): Promise<SynthesisResult> {
+  log("🤖", `Starting HYBRID Synthesis for "${collectionName}"...`);
 
-interface SynthesisResult {
-  academicSynthesis: string;
-  conceptualDeepDive: string;
-  actionableKnowledge: string;
-  knowledgeConnections: string;
-  criticalEvaluation: string;
-  glossary: string;
-}
+  // Stage 3A: Grounded Synthesis from NotebookLM (The Core Truth)
+  let groundedNote = "";
+  if (notebookId) {
+    try {
+      log("📓", "Requesting high-quality grounded note from NotebookLM...");
+      const query = `
+        Create a comprehensive research note in Markdown format based on our sources. 
+        Focus on: Executive Summary, Core Foundational Principles, Technical Implementation, and Practical Advice.
+        STRICT: Use citations [1][2] and maintain a technical, professional tone.
+      `;
+      const nbRes = await callNotebookLmPython("synthesize", { notebookId, query });
+      groundedNote = nbRes.answer || "";
+    } catch (e: any) {
+      logErr("NotebookLM Synthesis failed, falling back to interrogation context.", e);
+    }
+  }
 
-const SYNTHESIS_PROMPTS: { key: keyof SynthesisResult; label: string; prompt: string }[] = [
-  {
-    key: "academicSynthesis",
-    label: "Task A — Academic Synthesis",
-    prompt: `You are a rigorous academic research assistant. Based on the following NotebookLM knowledge extraction responses, produce a comprehensive academic-style synthesis that includes:
-- Background context and positioning within the field
-- Methodology or approaches described
-- Key findings with specific evidence, numbers, and citations
-- Critical analysis of the strengths and weaknesses of the arguments
-- Research gaps and open questions
+  // GROUNDING GUARD
+  const combinedContext = interrogationResponses.join("\n\n---\n\n") + "\n\n" + groundedNote;
+  if (combinedContext.length < 500) {
+    log("⚠️", "GROUNDING GUARD: Context is too sparse. Flagging note as INCOMPLETE.");
+  }
 
-Write at graduate-student comprehension level. Be thorough and precise. Every sentence must carry specific information — no filler.
+  const SYNTHESIS_PROMPTS = [
+      {
+          id: "academicSynthesis",
+          title: "Obsidian Metadata & Frontmatter",
+          prompt: `Using the provided context, generate the Obsidian frontmatter and executive summary for a master note on "${collectionName}".
+          
+          1. YAML Frontmatter: Always start with "---". Include tags, related MOCs [[AI-Research-MOC]], and status (seedling or developing).
+          2. Master Title: # ${collectionName} Knowledge Note
+          3. Brief TL;DR: 3 bullet points summary.`,
+          system: "You are an Obsidian vault architect. Output ONLY Markdown with a valid YAML block at the very top."
+      },
+      {
+          id: "knowledgeConnections",
+          title: "Semantic Graph Links",
+          prompt: `Generate 5-8 highly relevant semantic concepts enclosed in Obsidian wikilinks (e.g., [[Transformer Models]]) based on the research.`,
+          system: "Output only a list of [[wikilinks]]."
+      }
+  ];
 
-NotebookLM Responses:
-`,
-  },
-  {
-    key: "conceptualDeepDive",
-    label: "Task B — Conceptual Deep Dive",
-    prompt: `You are an expert educator. From the following knowledge extraction responses, identify every major concept. For EACH concept, provide TWO explanations:
-
-**ELI5 (Explain Like I'm 5):** A simple analogy or metaphor a child would understand.
-**Expert Layer:** Full technical depth with nuance, edge cases, and precise terminology.
-**Application:** One concrete real-world application of this concept.
-
-Use markdown headers for each concept (### Concept Name). Be exhaustive — do not skip any concept.
-
-NotebookLM Responses:
-`,
-  },
-  {
-    key: "actionableKnowledge",
-    label: "Task C — Actionable Knowledge",
-    prompt: `You are a practical knowledge engineer. From the following knowledge extraction responses, extract ALL concrete, actionable takeaways. For each, specify:
-
-- What specific action can be taken
-- What tools, frameworks, or methodologies to use
-- What habits or practices to adopt
-- Expected outcomes or benefits
-
-Use a numbered list. Be specific — not "learn more about X" but "implement X using Y framework to achieve Z".
-
-NotebookLM Responses:
-`,
-  },
-  {
-    key: "knowledgeConnections",
-    label: "Task D — Knowledge Graph Connections",
-    prompt: `You are a knowledge graph architect. From the following responses, identify ALL relationships between:
-1. Concepts WITHIN this source
-2. Connections to broader established knowledge in the field
-
-For each connection, use Obsidian [[wikilink]] format when referencing related topics or concepts. Explain WHY the connection exists and what it implies.
-
-Format as a bullet list with [[wikilinks]] embedded naturally in the text.
-
-NotebookLM Responses:
-`,
-  },
-  {
-    key: "criticalEvaluation",
-    label: "Task E — Critical Evaluation",
-    prompt: `You are a critical academic reviewer. From the following knowledge extraction responses, evaluate the sources critically:
-
-- Identify potential biases (confirmation bias, selection bias, funding bias, etc.)
-- Highlight weaknesses in argumentation or methodology
-- Point out conflicting evidence or alternative interpretations
-- List unanswered questions that remain after studying this material
-- Assess the overall reliability and quality of the evidence presented
-
-Be specific and cite particular claims when identifying issues.
-
-NotebookLM Responses:
-`,
-  },
-  {
-    key: "glossary",
-    label: "Task F — Glossary Generation",
-    prompt: `You are a technical lexicographer. From the following knowledge extraction responses, produce a COMPLETE glossary of every technical, domain-specific, or potentially unfamiliar term used.
-
-Format each entry as:
-**Term**: Clear, detailed definition with context of how it's used in this material.
-
-Order alphabetically. Be thorough — every technical term must appear. Definitions should be precise enough to stand alone without additional context.
-
-NotebookLM Responses:
-`,
-  },
-];
-
-async function runDeepSeekSynthesis(notebookLmResponses: string[]): Promise<SynthesisResult> {
-  const combinedContext = notebookLmResponses.join("\n\n---\n\n");
   const result: SynthesisResult = {
     academicSynthesis: "",
-    conceptualDeepDive: "",
+    conceptualDeepDive: groundedNote || "⚠️ Grounded synthesis missing.",
     actionableKnowledge: "",
     knowledgeConnections: "",
     criticalEvaluation: "",
@@ -531,50 +524,40 @@ async function runDeepSeekSynthesis(notebookLmResponses: string[]): Promise<Synt
   };
 
   for (const task of SYNTHESIS_PROMPTS) {
-    log("🧠", `Running ${task.label}...`);
+    try {
+      const resp = await ollamaRequest("/api/generate", {
+        model: "deepseek-r1:14b",
+        prompt: `TOPIC: ${collectionName}\n\n${task.prompt}\n\nCONTEXT:\n${combinedContext.substring(0, 10000)}`,
+        system: task.system,
+        stream: false,
+        options: { temperature: 0.1 },
+      });
 
-    const fullPrompt = task.prompt + combinedContext;
-    let attempts = 0;
-    let success = false;
-
-    while (attempts < 2 && !success) {
-      attempts++;
-      try {
-        const resp = await ollamaRequest("/api/generate", {
-          model: "deepseek-r1:14b",
-          prompt: fullPrompt,
-          stream: false,
-          options: { temperature: 0.3, num_predict: 4000 },
-        });
-
-        let rawText: string = resp.response || "";
-        // Strip <think> blocks from deepseek-r1
-        rawText = rawText.replace(/<think>[\s\S]*?<\/think>\s*/gi, "").trim();
-
-        if (rawText.length > 50) {
-          result[task.key] = rawText;
-          success = true;
-          log("✅", `${task.label} complete (${rawText.length} chars)`);
-        } else {
-          log("⚠️", `${task.label} returned insufficient content (attempt ${attempts})`);
-        }
-      } catch (e: any) {
-        logErr(`${task.label} failed (attempt ${attempts}):`, e);
-      }
+      let rawText: string = resp.response || "";
+      rawText = rawText.replace(/<think>[\s\S]*?<\/think>\n?/gi, "").trim();
+      result[task.id as keyof SynthesisResult] = rawText;
+      log("✅", `${task.title} complete`);
+    } catch (e: any) {
+      logErr(`${task.title} failed:`, e);
     }
+  }
 
-    if (!success) {
-      result[task.key] = `⚠️ Synthesis failed after ${attempts} attempts. Manual review needed.`;
-    }
+  // Final check: If grounded note is too short, warn inside the note
+  if (combinedContext.length < 500) {
+    result.academicSynthesis = `> [!WARNING] Grounding Guard\n> This note was generated with sparse source data. It may be incomplete.\n\n` + result.academicSynthesis;
   }
 
   return result;
 }
 
+
 // ── STAGE 4: Obsidian Note Writing ─────────────────────────────
 
 function buildSourcesIndexTable(items: ZoteroItem[]): string {
-  const rows = items.map((item, i) => {
+  // Deduplicate items by key
+  const uniqueItems = Array.from(new Map(items.map(item => [item.key, item])).values());
+  
+  const rows = uniqueItems.map((item, i) => {
     const typeIcon =
       item.type === "videoRecording"
         ? "🎥 Video"
@@ -597,58 +580,37 @@ function renderMasterNote(
   collection: ZoteroCollection,
   synthesis: SynthesisResult,
   notebookLmResponses: string[],
-  media: { audioUrl: string | null; videoUrl: string | null },
+  media: { audioPath: string | null; videoPath: string | null },
   processedKeys: string[]
 ): string {
   const now = new Date().toISOString();
-  // Extract collection summary from first query response
-  const summaryContent = notebookLmResponses[0]
-    ? notebookLmResponses[0].split("\n\n").slice(1).join("\n\n").trim()
-    : "_No summary available yet._";
-
-  // Extract key findings from query 4
-  const keyFindings = notebookLmResponses[3]
-    ? notebookLmResponses[3].split("\n\n").slice(1).join("\n\n").trim()
-    : "_Pending extraction._";
-
-  const frontmatter = [
-    "---",
-    "tags:",
-    `  - collection/${slugify(collection.name)}`,
-    "  - auto-generated",
-    "  - pipeline/zotero",
-    `collection: "${collection.name}"`,
-    `last_updated: "${now}"`,
-    `sources_processed: [${processedKeys.map((k) => `"${k}"`).join(", ")}]`,
-    `notebooklm_video: ${media.videoUrl ? `"${media.videoUrl}"` : "null"}`,
-    `notebooklm_audio: ${media.audioUrl ? `"${media.audioUrl}"` : "null"}`,
-    `status: "up-to-date"`,
-    "---",
-  ].join("\n");
 
   const mediaSection = [
     "## 🎬 NotebookLM Audio/Video Overview",
-    media.audioUrl
-      ? `> [🎧 Listen to Audio Overview](${media.audioUrl})`
-      : "> _Audio overview not yet generated._",
-    media.videoUrl
-      ? `> [🎥 Watch Video Summary](${media.videoUrl})`
+    media.videoPath
+      ? `### 🎥 Video Explainer\n![[${media.videoPath}]]`
       : "> _Video summary not yet generated._",
-    "> *Auto-generated overview of all sources in this collection.*",
+    media.audioPath
+      ? `### 🎧 Audio Deep Dive\n![[${media.audioPath}]]`
+      : "> _Audio overview not yet generated._",
+    "",
+    "> *Auto-generated overview of all sources in this collection downloaded from NotebookLM.*",
+  ].join("\n");
+
+  const updateLog = [
+    "## 🕐 Update Log",
+    "",
+    "| Date | Sources Added | Summary of Changes |",
+    "|------|--------------|-------------------|",
+    `| ${now.split("T")[0]} | ${processedKeys.join(", ")} | Initial note creation with ${processedKeys.length} sources |`,
   ].join("\n");
 
   return [
-    frontmatter,
+    synthesis.academicSynthesis,
     "",
     `# ${collection.name} — Master Knowledge Note`,
     "",
     mediaSection,
-    "",
-    "---",
-    "",
-    "## 📌 Collection Summary",
-    "",
-    summaryContent,
     "",
     "---",
     "",
@@ -658,53 +620,32 @@ function renderMasterNote(
     "",
     "---",
     "",
-    "## 🧠 Core Concepts & Frameworks",
-    "",
+    "## 🧠 Conceptual Deep Dive",
     synthesis.conceptualDeepDive,
     "",
     "---",
     "",
-    "## 📖 Academic Deep Dive",
-    "",
-    synthesis.academicSynthesis,
-    "",
-    "---",
-    "",
-    "## 🔬 Key Findings & Evidence",
-    "",
-    keyFindings,
-    "",
-    "---",
-    "",
-    "## ⚡ Actionable Takeaways",
-    "",
+    "## 🛠️ Actionable Takeaways",
     synthesis.actionableKnowledge,
     "",
     "---",
     "",
-    "## 🗺️ Knowledge Connections",
-    "",
-    synthesis.knowledgeConnections,
-    "",
-    "---",
-    "",
-    "## ⚠️ Critical Evaluation",
-    "",
+    "## ⚖️ Critical Evaluation",
     synthesis.criticalEvaluation,
     "",
     "---",
     "",
-    "## 📘 Glossary",
-    "",
+    "## 📖 Glossary",
     synthesis.glossary,
     "",
     "---",
     "",
-    "## 🕐 Update Log",
+    "## 🔗 Knowledge Graph",
+    synthesis.knowledgeConnections,
     "",
-    "| Date | Sources Added | Summary of Changes |",
-    "|------|--------------|-------------------|",
-    `| ${now.split("T")[0]} | ${processedKeys.join(", ")} | Initial note creation with ${processedKeys.length} sources |`,
+    "---",
+    "",
+    updateLog,
     "",
   ].join("\n");
 }
@@ -714,29 +655,28 @@ function mergeIntoExistingNote(
   newItems: ZoteroItem[],
   synthesis: SynthesisResult,
   notebookLmResponses: string[],
-  media: { audioUrl: string | null; videoUrl: string | null },
+  media: { audioPath: string | null; videoPath: string | null },
   newKeys: string[],
   allKeys: string[]
 ): string {
   const now = new Date().toISOString();
   let updated = existingContent;
 
-  // Update frontmatter
   updated = updated.replace(/last_updated:\s*"[^"]*"/, `last_updated: "${now}"`);
   updated = updated.replace(
     /sources_processed:\s*\[[^\]]*\]/,
     `sources_processed: [${allKeys.map((k) => `"${k}"`).join(", ")}]`
   );
-  if (media.audioUrl) {
+  if (media.audioPath) {
     updated = updated.replace(
       /notebooklm_audio:\s*(?:null|"[^"]*")/,
-      `notebooklm_audio: "${media.audioUrl}"`
+      `notebooklm_audio: "${media.audioPath}"`
     );
   }
-  if (media.videoUrl) {
+  if (media.videoPath) {
     updated = updated.replace(
       /notebooklm_video:\s*(?:null|"[^"]*")/,
-      `notebooklm_video: "${media.videoUrl}"`
+      `notebooklm_video: "${media.videoPath}"`
     );
   }
 
@@ -759,12 +699,11 @@ function mergeIntoExistingNote(
   }
 
   // Append enrichment to each section (never overwrite)
-  const appendToSection = (sectionHeader: string, newContent: string) => {
-    const marker = `## ${sectionHeader}`;
-    const sectionIdx = updated.indexOf(marker);
+  const appendToSection = (sectionTitleMatch: string, newContent: string) => {
+    const sectionIdx = updated.indexOf(sectionTitleMatch);
     if (sectionIdx === -1) return;
 
-    const nextSectionIdx = updated.indexOf("\n---\n", sectionIdx + marker.length);
+    const nextSectionIdx = updated.indexOf("\n---\n", sectionIdx + sectionTitleMatch.length);
     if (nextSectionIdx === -1) return;
 
     const enrichmentBlock = `\n\n### 📎 Updated: ${now.split("T")[0]}\n\n${newContent}\n`;
@@ -774,17 +713,23 @@ function mergeIntoExistingNote(
       updated.substring(nextSectionIdx);
   };
 
+  // Maps tasks to existing section markers (if they still exist)
+  if (synthesis.academicSynthesis && synthesis.academicSynthesis.includes("# TL;DR")) {
+     // Task A is a special case as it includes frontmatter. We only append the TL;DR part if possible.
+     const tldr = synthesis.academicSynthesis.split("# TL;DR")[1] || "";
+     if (tldr) appendToSection("# TL;DR", tldr);
+  }
+  
   if (synthesis.conceptualDeepDive)
-    appendToSection("🧠 Core Concepts & Frameworks", synthesis.conceptualDeepDive);
-  if (synthesis.academicSynthesis)
-    appendToSection("📖 Academic Deep Dive", synthesis.academicSynthesis);
+    appendToSection("## 🧠 Conceptual Deep Dive", synthesis.conceptualDeepDive);
   if (synthesis.actionableKnowledge)
-    appendToSection("⚡ Actionable Takeaways", synthesis.actionableKnowledge);
-  if (synthesis.knowledgeConnections)
-    appendToSection("🗺️ Knowledge Connections", synthesis.knowledgeConnections);
+    appendToSection("## 🛠️ Actionable Takeaways", synthesis.actionableKnowledge);
   if (synthesis.criticalEvaluation)
-    appendToSection("⚠️ Critical Evaluation", synthesis.criticalEvaluation);
-  if (synthesis.glossary) appendToSection("📘 Glossary", synthesis.glossary);
+    appendToSection("## ⚖️ Critical Evaluation", synthesis.criticalEvaluation);
+  if (synthesis.glossary) 
+    appendToSection("## 📖 Glossary", synthesis.glossary);
+  if (synthesis.knowledgeConnections)
+    appendToSection("## 🔗 Knowledge Graph", synthesis.knowledgeConnections);
 
   // Append to update log
   const logTableHeaderIdx = updated.lastIndexOf("|------|");
@@ -887,16 +832,17 @@ export async function processCollection(collection: ZoteroCollection): Promise<v
   log("⏳", "Waiting 10s for NotebookLM to process sources...");
   await sleep(10000);
 
-  // Run 10-query interrogation
-  log("📥", "Running 10-query NotebookLM interrogation...");
+  // Run 5-query interrogation
+  log("📥", "Running 5-query NotebookLM interrogation...");
   const notebookLmResponses = await interrogateNotebook(notebookId);
 
   // Generate media
-  const media = await generateNotebookMedia(notebookId);
+  const media = await generateNotebookMedia(notebookId, collection.name);
 
   // ── Stage 3: DeepSeek Synthesis ──────────────────────────────
-  log("🧠", "Running 6-task DeepSeek synthesis...");
-  const synthesis = await runDeepSeekSynthesis(notebookLmResponses);
+  log("🧠", "Running hybrid grounded synthesis...");
+  const synthesis = await runDeepSeekSynthesis(collection.name, notebookId, notebookLmResponses);
+
 
   // ── Stage 4: Obsidian Note ───────────────────────────────────
   const domain = classifyDomain(collection.name);
