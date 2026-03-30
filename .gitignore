@@ -3,3 +3,8 @@ auth.json
 staging/
 node_modules/
 *.log
+__pycache__/
+*.pyc
+nestbrain/config.json
+nestbrain/runs/
+nestbrain/**/__pycache__/
