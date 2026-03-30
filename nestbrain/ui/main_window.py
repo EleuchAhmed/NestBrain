@@ -110,10 +110,12 @@ class MainWindow(QMainWindow):
 
         self._graph_thread: QThread | None = None
         self._graph_worker: GraphWorker | None = None
+        self._selected_collection_key = self.config.selected_collection_key.strip()
 
         self.sidebar = Sidebar()
         self.workspace = Workspace()
         self.zotero_panel = ZoteroPanel()
+        self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
 
         self.sync_manager = LocalSyncManager(vault_path=self.config.vault_path, parent=self)
         self.sync_manager.sync_status_changed.connect(self.zotero_panel.update_sync_chip)
@@ -146,6 +148,7 @@ class MainWindow(QMainWindow):
         self.sidebar.settings_clicked.connect(self._open_settings)
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
         self.zotero_panel.library_submitted.connect(self._set_zotero_library)
+        self.zotero_panel.collection_selected.connect(self._set_selected_collection)
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {
@@ -161,6 +164,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.config = dialog.get_config()
+            self._selected_collection_key = self.config.selected_collection_key.strip()
             save_config(self.config_path, self.config)
             self.sync_manager.set_vault_path(self.config.vault_path)
             self.statusBar().showMessage("Settings saved", 3000)
@@ -170,14 +174,25 @@ class MainWindow(QMainWindow):
         save_config(self.config_path, self.config)
         self._start_zotero_sync()
 
+    def _set_selected_collection(self, collection_key: str) -> None:
+        self._selected_collection_key = collection_key.strip()
+        self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
+        self.config = replace(self.config, selected_collection_key=self._selected_collection_key)
+        save_config(self.config_path, self.config)
+        if self._selected_collection_key:
+            self.statusBar().showMessage(f"Pipeline target collection set: {self._selected_collection_key}", 3500)
+        else:
+            self.statusBar().showMessage("Pipeline target collection cleared (all collections)", 3500)
+
     def _start_pipeline(self) -> None:
-        if self._pipeline_thread and self._pipeline_thread.isRunning():
+        if self._thread_running(self._pipeline_thread):
             return
 
         self.workspace.set_pipeline_running(True)
+        run_config = replace(self.config, selected_collection_key=self._selected_collection_key)
 
         self._pipeline_thread = QThread(self)
-        self._pipeline_worker = PipelineWorker(self.app_root, self.config)
+        self._pipeline_worker = PipelineWorker(self.app_root, run_config)
         self._pipeline_worker.moveToThread(self._pipeline_thread)
 
         self._pipeline_thread.started.connect(self._pipeline_worker.run)
@@ -187,6 +202,7 @@ class MainWindow(QMainWindow):
         self._pipeline_worker.error.connect(self._on_pipeline_error)
         self._pipeline_worker.finished.connect(self._on_pipeline_finished)
         self._pipeline_worker.finished.connect(self._pipeline_thread.quit)
+        self._pipeline_worker.finished.connect(self._cleanup_pipeline_refs)
 
         self._pipeline_thread.finished.connect(self._pipeline_thread.deleteLater)
         self._pipeline_thread.start()
@@ -223,7 +239,7 @@ class MainWindow(QMainWindow):
         self._start_zotero_sync()
 
     def _start_zotero_sync(self) -> None:
-        if self._sync_thread and self._sync_thread.isRunning():
+        if self._thread_running(self._sync_thread):
             return
 
         self._live_collections = []
@@ -238,6 +254,7 @@ class MainWindow(QMainWindow):
         self._sync_worker.error.connect(self._on_sync_error)
         self._sync_worker.sync_done.connect(self._on_sync_done)
         self._sync_worker.sync_done.connect(self._sync_thread.quit)
+        self._sync_worker.sync_done.connect(self._cleanup_sync_refs)
 
         self._sync_thread.finished.connect(self._sync_thread.deleteLater)
         self._sync_thread.start()
@@ -254,7 +271,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Zotero sync failed: {message}", 6000)
 
     def _start_graph_worker(self, notes: list[dict[str, Any]], collections: list[dict[str, Any]]) -> None:
-        if self._graph_thread and self._graph_thread.isRunning():
+        if self._thread_running(self._graph_thread):
             return
 
         self._graph_thread = QThread(self)
@@ -265,6 +282,7 @@ class MainWindow(QMainWindow):
         self._graph_worker.graph_ready.connect(self.workspace.update_graph)
         self._graph_worker.error.connect(lambda message: self.statusBar().showMessage(f"Graph worker error: {message}", 6000))
         self._graph_worker.finished.connect(self._graph_thread.quit)
+        self._graph_worker.finished.connect(self._cleanup_graph_refs)
 
         self._graph_thread.finished.connect(self._graph_thread.deleteLater)
         self._graph_thread.start()
@@ -424,3 +442,23 @@ class MainWindow(QMainWindow):
                 thread.wait(2000)
         except RuntimeError:
             return
+
+    def _thread_running(self, thread: QThread | None) -> bool:
+        if thread is None:
+            return False
+        try:
+            return thread.isRunning()
+        except RuntimeError:
+            return False
+
+    def _cleanup_pipeline_refs(self) -> None:
+        self._pipeline_worker = None
+        self._pipeline_thread = None
+
+    def _cleanup_sync_refs(self) -> None:
+        self._sync_worker = None
+        self._sync_thread = None
+
+    def _cleanup_graph_refs(self) -> None:
+        self._graph_worker = None
+        self._graph_thread = None

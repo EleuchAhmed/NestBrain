@@ -36,16 +36,23 @@ class BrainMapView(QWidget):
         self.graph.clear()
         self.node_data.clear()
 
+        note_ids: set[str] = set()
+
         for node in graph_payload.get("nodes", []):
             node_id = str(node.get("id"))
+            node_type = str(node.get("type", ""))
+            if node_type != "note":
+                continue
             self.graph.add_node(node_id)
             self.node_data[node_id] = node
+            note_ids.add(node_id)
 
         for edge in graph_payload.get("edges", []):
             source = str(edge.get("source"))
             target = str(edge.get("target"))
             weight = float(edge.get("weight", 1.0))
-            if source and target:
+            reason = str(edge.get("reason", "")).lower()
+            if source in note_ids and target in note_ids and "wikilink" in reason:
                 self.graph.add_edge(source, target, weight=weight)
 
         if self.graph.number_of_nodes() > 0:

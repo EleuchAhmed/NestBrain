@@ -22,6 +22,7 @@ import Database from "better-sqlite3";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const APP_ROOT = path.resolve(__dirname, "..", "..");
 
 // ── Load environment ───────────────────────────────────────────
 
@@ -29,7 +30,7 @@ config({ path: path.resolve(__dirname, "..", ".env") });
 
 const VAULT_PATH: string = process.env.OBSIDIAN_VAULT_PATH ?? "";
 const OLLAMA_HOST: string = process.env.OLLAMA_HOST ?? "http://localhost:11434";
-const REGISTRY_PATH = path.resolve(__dirname, "..", "pipeline-registry.json");
+const REGISTRY_PATH = path.join(APP_ROOT, "pipeline-registry.json");
 const ZOTERO_DIR = process.env.ZOTERO_DATA_DIR ?? path.join(os.homedir(), "Zotero");
 const ZOTERO_DB = path.join(ZOTERO_DIR, "zotero.sqlite");
 const ZOTERO_STORAGE = path.join(ZOTERO_DIR, "storage");
@@ -37,7 +38,7 @@ const ZOTERO_STORAGE = path.join(ZOTERO_DIR, "storage");
 // ── NotebookLM Python Bridge ───────────────────────────────────
 
 async function callNotebookLmPython(action: string, args: any): Promise<any> {
-  const scriptPath = path.resolve(__dirname, "..", "scripts", "notebooklm_operations.py");
+  const scriptPath = path.join(APP_ROOT, "scripts", "notebooklm_operations.py");
   const payload = JSON.stringify({ action, args });
   
   return new Promise((resolve, reject) => {

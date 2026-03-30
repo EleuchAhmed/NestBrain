@@ -50,18 +50,52 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - OBSIDIAN_VAULT_PATH=/vault
       - COLLECTION_NAME=${COLLECTION_NAME:-Research Synthesis}
-      - NOTEBOOKLM_MCP_HOST=host.docker.internal
+      - ZOTERO_DATA_DIR=/zotero
     volumes:
       - ./staging:/app/staging
-      - ./agents:/app/agents:ro
-      - ${NOTEBOOKLM_MCP_PATH:-.notebooklm-mcp}:/root/.notebooklm-mcp:ro
+      - ${ZOTERO_DATA_DIR:-C:\Users\Mega Pc\Zotero}:/zotero:ro
+      - ${NOTEBOOKLM_MCP_PATH:-.notebooklm-mcp}:/home/node/.notebooklm-mcp:ro
+      - ${OBSIDIAN_VAULT_PATH}:/vault:rw
+      - ./pipeline-registry.json:/app/pipeline-registry.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      watcher:
+        condition: service_started
+      ollama:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    labels:
+      - "com.pipeline.service=research-automation"
+
+  # ── Nestbrain Desktop (optional profile) ─────────────────────
+  # GUI app containerization target; requires host display support.
+  nestbrain:
+    profiles: ["desktop"]
+    build:
+      context: .
+      dockerfile: Dockerfile.nestbrain
+    env_file: .env
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0.0}
+      - QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-xcb}
+      - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - QT_XCB_GL_INTEGRATION=xcb_glx
+      - OLLAMA_HOST=http://ollama:11434
+      - ZOTERO_HOST=http://host.docker.internal:23119
+    working_dir: /workspace
+    command: python -m nestbrain.main
+    volumes:
+      - ./:/workspace
       - ${OBSIDIAN_VAULT_PATH}:/vault:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - watcher
       - ollama
-    restart: unless-stopped
+    restart: on-failure:5
     labels:
       - "com.pipeline.service=research-automation"
 

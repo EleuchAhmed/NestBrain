@@ -4,8 +4,11 @@
       "name": "LLM-FineTuning",
       "obsidianPath": "20_Concepts/AI-Data/llm-finetuning.md",
       "notebookId": "eb6e048f-85bd-4c68-a657-157b120e62e6",
-      "processedSources": [],
-      "lastUpdated": "2026-03-29T02:14:29.775Z"
+      "processedSources": [
+        "2TEU3LTU",
+        "CS9WSHBK"
+      ],
+      "lastUpdated": "2026-03-30T12:05:14.180Z"
     }
   }
 }

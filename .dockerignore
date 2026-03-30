@@ -7,4 +7,3 @@ staging/
 .gitignore
 README.md
 docker-compose.yml
-Dockerfile.*

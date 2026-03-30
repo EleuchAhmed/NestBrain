@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -159,6 +159,7 @@ class CollectionItemWidget(QFrame):
 
 class ZoteroPanel(QWidget):
     library_submitted = pyqtSignal(str)
+    collection_selected = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -204,6 +205,8 @@ class ZoteroPanel(QWidget):
         collections_label_row.addWidget(self.folder_count)
 
         self.collection_list = QListWidget()
+        self.collection_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.collection_list.itemSelectionChanged.connect(self._emit_selected_collection)
 
         self.sync_chip = QFrame()
         self.sync_chip.setObjectName("SyncChip")
@@ -230,6 +233,7 @@ class ZoteroPanel(QWidget):
         root.addLayout(collections_label_row)
         root.addWidget(self.collection_list, 1)
         root.addWidget(self.sync_chip)
+        self._selected_collection_key = ""
 
     def set_connection_active(self, active: bool) -> None:
         if active:
@@ -243,6 +247,8 @@ class ZoteroPanel(QWidget):
         self.collection_list.clear()
         self.folder_count.setText(f"{len(collections)} Folders")
 
+        selected_item: QListWidgetItem | None = None
+
         for collection in collections:
             display = CollectionDisplay(
                 name=str(collection.get("name", "Untitled")),
@@ -250,15 +256,38 @@ class ZoteroPanel(QWidget):
                 modified=str(collection.get("last_modified", "Unknown")),
                 status=str(collection.get("status", "Idle")),
             )
+            collection_key = str(collection.get("key", "")).strip()
             widget = CollectionItemWidget(display)
             item = QListWidgetItem(self.collection_list)
+            item.setData(Qt.ItemDataRole.UserRole, collection_key)
             item.setSizeHint(widget.sizeHint())
             self.collection_list.addItem(item)
             self.collection_list.setItemWidget(item, widget)
+
+            if collection_key and collection_key == self._selected_collection_key:
+                selected_item = item
+
+        if selected_item is not None:
+            selected_item.setSelected(True)
 
     def update_sync_chip(self, title: str, subtitle: str) -> None:
         self.sync_title.setText(title)
         self.sync_subtitle.setText(subtitle)
 
+    def set_selected_collection_key(self, collection_key: str) -> None:
+        self._selected_collection_key = collection_key.strip()
+
     def _emit_library(self) -> None:
         self.library_submitted.emit(self.source_input.text().strip())
+
+    def _emit_selected_collection(self) -> None:
+        items = self.collection_list.selectedItems()
+        if not items:
+            self._selected_collection_key = ""
+            self.collection_selected.emit("")
+            return
+
+        selected = items[0]
+        key = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip()
+        self._selected_collection_key = key
+        self.collection_selected.emit(key)

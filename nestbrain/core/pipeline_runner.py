@@ -15,6 +15,7 @@ from .zotero_sync import ZoteroCollection, ZoteroSyncClient, ZoteroSyncError
 DEFAULT_CONFIG: dict[str, Any] = {
     "vault_path": "",
     "zotero_library_id": "",
+    "selected_collection_key": "",
     "ollama_model": "mistral",
     "ollama_host": "http://localhost:11434",
     "zotero_host": "http://localhost:23119",
@@ -26,6 +27,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 class PipelineConfig:
     vault_path: str
     zotero_library_id: str
+    selected_collection_key: str
     ollama_model: str
     ollama_host: str
     zotero_host: str
@@ -62,7 +64,12 @@ class PipelineRunner:
         collections: list[ZoteroCollection] = []
         zotero_error = ""
         try:
-            collections = zotero.sync_all()
+            selected_key = config.selected_collection_key.strip()
+            if selected_key:
+                self._emit(status_callback, f"Syncing Zotero collection: {selected_key}")
+                collections = zotero.sync_collections_by_keys([selected_key])
+            else:
+                collections = zotero.sync_all()
         except ZoteroSyncError as exc:
             zotero_error = str(exc)
         self._emit(progress_callback, 40)
@@ -184,6 +191,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
     return PipelineConfig(
         vault_path=str(merged.get("vault_path", "")),
         zotero_library_id=str(merged.get("zotero_library_id", "")),
+        selected_collection_key=str(merged.get("selected_collection_key", "")),
         ollama_model=str(merged.get("ollama_model", "mistral")),
         ollama_host=str(merged.get("ollama_host", "http://localhost:11434")),
         zotero_host=str(merged.get("zotero_host", "http://localhost:23119")),
@@ -195,6 +203,7 @@ def save_config(config_path: str | Path, config: PipelineConfig) -> None:
     payload = {
         "vault_path": config.vault_path,
         "zotero_library_id": config.zotero_library_id,
+        "selected_collection_key": config.selected_collection_key,
         "ollama_model": config.ollama_model,
         "ollama_host": config.ollama_host,
         "zotero_host": config.zotero_host,

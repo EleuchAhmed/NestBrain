@@ -11,7 +11,11 @@ Usage:
 Required env vars (from .env):
     ZOTERO_STORAGE_PATH  — path to Zotero's storage/ dir
                            (default: ~/Zotero/storage)
-                            (default: ./staging)
+    STAGING_DIR          — destination directory for staged files
+                           (default: ./staging)
+"""
+
+import sys
 import os
 import shutil
 import time

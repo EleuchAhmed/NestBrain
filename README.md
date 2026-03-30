@@ -315,4 +315,59 @@ research-pipeline/
 - `.env` is never baked into Docker images (`.dockerignore` enforces this)
 - Zotero storage is mounted READ-ONLY in the watcher container
 - NotebookLM auth (`~/.notebooklm-mcp`) is mounted READ-ONLY
-- Obsidian vault is NOT mounted — pipeline writes via REST API only, which requires the API key and only allows vault-scoped writes
+- Obsidian vault is mounted READ-WRITE only to services that produce notes
+
+## Docker Profiles (Updated)
+
+The repository now supports full containerized execution for the pipeline stack and an optional containerized Nestbrain desktop profile.
+
+### Core pipeline (default)
+
+Starts watcher + ollama + ollama-init + pipeline:
+
+```bash
+docker compose up -d
+```
+
+### Nestbrain desktop profile (optional)
+
+Build and run Nestbrain in Docker (requires host display support such as X server/WSLg):
+
+```bash
+docker compose --profile desktop up -d nestbrain
+```
+
+#### Windows host display bridge (VcXsrv)
+
+1. Install VcXsrv on Windows.
+2. Start the X server with the helper script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start_vcxsrv.ps1
+```
+
+3. Ensure these `.env` values are set:
+
+```text
+DISPLAY=host.docker.internal:0.0
+QT_QPA_PLATFORM=xcb
+```
+
+4. Start desktop profile:
+
+```bash
+docker compose --profile desktop up -d nestbrain
+```
+
+If the GUI does not open, check logs:
+
+```bash
+docker compose --profile desktop logs nestbrain --tail=120
+```
+
+### Required environment variables for full dockerized runtime
+
+- `ZOTERO_DATA_DIR` (host path containing both `storage/` and `zotero.sqlite`)
+- `NOTEBOOKLM_MCP_PATH` (host path to `.notebooklm-mcp` auth cache)
+- `OBSIDIAN_VAULT_PATH` (host path to vault)
+- `DISPLAY` (only when using Nestbrain desktop profile)

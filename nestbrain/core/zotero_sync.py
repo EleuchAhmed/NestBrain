@@ -118,6 +118,21 @@ class ZoteroSyncClient:
 
     def sync_all(self) -> list[ZoteroCollection]:
         collections = self.get_collections()
+        return self._sync_collection_objects(collections)
+
+    def sync_collections_by_keys(self, collection_keys: list[str]) -> list[ZoteroCollection]:
+        requested = {key.strip() for key in collection_keys if key.strip()}
+        if not requested:
+            return self.sync_all()
+
+        available = self.get_collections()
+        filtered = [collection for collection in available if collection.key in requested]
+        if not filtered:
+            raise ZoteroSyncError(f"No matching Zotero collections for keys: {', '.join(sorted(requested))}")
+
+        return self._sync_collection_objects(filtered)
+
+    def _sync_collection_objects(self, collections: list[ZoteroCollection]) -> list[ZoteroCollection]:
         for collection in collections:
             collection.status = "Syncing"
             items = self.get_items_for_collection(collection.key)
