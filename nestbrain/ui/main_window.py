@@ -165,9 +165,21 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.config = dialog.get_config()
             self._selected_collection_key = self.config.selected_collection_key.strip()
+            
+            # Validate vault path immediately after settings save
+            from ..core.pipeline_runner import PipelineRunner
+            runner = PipelineRunner(self.app_root)
+            validation = runner._validate_vault_path(self.config.vault_path)
+            
             save_config(self.config_path, self.config)
             self.sync_manager.set_vault_path(self.config.vault_path)
-            self.statusBar().showMessage("Settings saved", 3000)
+            
+            if validation["error"]:
+                QMessageBox.warning(self, "Vault Configuration Warning", 
+                    f"⚠️ {validation['error']}\n\nPlease reconfigure your Obsidian vault path in Settings.")
+                self.statusBar().showMessage("⚠️ Vault path needs configuration", 5000)
+            else:
+                self.statusBar().showMessage("Settings saved", 3000)
 
     def _set_zotero_library(self, value: str) -> None:
         self.config = replace(self.config, zotero_library_id=value)
@@ -211,6 +223,19 @@ class MainWindow(QMainWindow):
         notes = payload.get("notes", [])
         collections = payload.get("collections", [])
         graph_payload = payload.get("graph", {})
+        errors = payload.get("errors", {})
+
+        # Check for vault configuration error
+        vault_error = errors.get("vault", "")
+        if vault_error:
+            QMessageBox.critical(self, "Pipeline Error", 
+                f"Cannot start pipeline: {vault_error}\n\nPlease configure your Obsidian vault path in Settings.")
+            self.workspace.set_pipeline_running(False)
+            return
+
+        # Update vault path label in notes view
+        if hasattr(self.workspace, 'vault_path_label') and self.config.vault_path:
+            self.workspace.vault_path_label.setText(f"Vault: {Path(self.config.vault_path).name}")
 
         self.workspace.update_notes(notes)
         self.workspace.update_graph(graph_payload)
@@ -223,9 +248,14 @@ class MainWindow(QMainWindow):
         if notes or collections:
             self._start_graph_worker(notes, collections)
 
-        errors = payload.get("errors", {})
+        # Check for vault scan warning
         visible_errors = [message for message in errors.values() if message]
-        if visible_errors:
+        if notes and len(notes) > 300:
+            QMessageBox.warning(self, "Vault Scan Warning", 
+                f"⚠️ Parsed {len(notes)} notes from vault. This seems high.\n\n"
+                f"Your vault path may be too broad (e.g., Desktop instead of a specific vault folder).\n"
+                f"Please update it in Settings.")
+        elif visible_errors:
             self.statusBar().showMessage("Pipeline completed with warnings", 6000)
 
     def _on_pipeline_error(self, message: str) -> None:

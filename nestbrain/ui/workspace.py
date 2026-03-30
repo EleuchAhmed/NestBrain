@@ -66,6 +66,8 @@ class Workspace(QWidget):
             "graph": 4,
         }
 
+        self._all_notes: list[dict[str, Any]] = []  # Initialize to avoid filter errors before first run
+
         self.home_view = self._build_home_view()
         self.notes_view = self._build_notes_view()
         self.archive_view = self._build_archive_view()
@@ -130,8 +132,17 @@ class Workspace(QWidget):
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
 
-        header = QLabel("Obsidian Notes")
+        header_layout = QHBoxLayout()
+        header = QLabel("Vault Notes (Parsed)")
         header.setObjectName("PanelHeader")
+        header.setToolTip("Markdown notes parsed from your configured Obsidian vault")
+        header_layout.addWidget(header)
+        header_layout.addStretch(1)
+
+        self.vault_path_label = QLabel()
+        self.vault_path_label.setObjectName("VaultPathLabel")
+        self.vault_path_label.setStyleSheet("color: #999; font-size: 11px;")
+        header_layout.addWidget(self.vault_path_label)
 
         self.notes_search = QLineEdit()
         self.notes_search.setPlaceholderText("Search by title or tag...")
@@ -143,7 +154,7 @@ class Workspace(QWidget):
         self.notes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.notes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
-        layout.addWidget(header)
+        layout.addLayout(header_layout)
         layout.addWidget(self.notes_search)
         layout.addWidget(self.notes_table)
         return widget

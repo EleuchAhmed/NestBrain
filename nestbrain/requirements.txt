@@ -7,3 +7,4 @@ pyqtgraph>=0.13.7
 PyOpenGL>=3.1.7
 numpy>=1.26
 matplotlib>=3.9
+notebooklm-py>=0.3.4

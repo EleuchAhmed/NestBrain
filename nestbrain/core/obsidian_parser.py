@@ -13,6 +13,10 @@ WIKILINK_PATTERN = re.compile(r"\[\[([^\]|#]+)(?:#[^\]]+)?(?:\|[^\]]+)?\]\]")
 TAG_PATTERN = re.compile(r"(?<!\w)#([\w\-/]+)")
 HEADING_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
+# Directories to exclude from vault scan to avoid picking up dependencies and build artifacts
+EXCLUDED_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next", ".nuxt", "target", "egg-info", ".pytest_cache"}
+MAX_NOTES_THRESHOLD = 300  # Alert if vault scan exceeds this count (suggests misconfigured path)
+
 
 @dataclass(slots=True)
 class ObsidianNote:
@@ -39,12 +43,20 @@ class ObsidianParser:
 
         notes: list[ObsidianNote] = []
         for md_file in self.vault_path.rglob("*.md"):
+            # Skip files in excluded directories
+            if any(part in EXCLUDED_DIRS for part in md_file.relative_to(self.vault_path).parts):
+                continue
             try:
                 notes.append(self.parse_file(md_file))
             except Exception:
                 continue
 
         notes.sort(key=lambda note: note.last_modified, reverse=True)
+        # Track if note count seems suspiciously high (misconfigured vault path)
+        if len(notes) > MAX_NOTES_THRESHOLD:
+            # Add warning to first note's metadata for UI display
+            if notes:
+                notes[0].metadata["_vault_scan_warning"] = f"Parsed {len(notes)} notes—vault path may be too broad. Configure to a specific Obsidian vault folder."
         return notes
 
     def parse_file(self, file_path: str | Path) -> ObsidianNote:

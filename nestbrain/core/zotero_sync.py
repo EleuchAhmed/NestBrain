@@ -91,6 +91,11 @@ class ZoteroSyncClient:
             if not key:
                 continue
 
+            # Filter out child items (attachments, notes) to get only top-level research items
+            item_type = str(payload.get("itemType", "item")).lower()
+            if item_type in ("attachment", "note"):
+                continue
+
             creators: list[str] = []
             for creator in payload.get("creators", []):
                 if not isinstance(creator, dict):
@@ -105,7 +110,7 @@ class ZoteroSyncClient:
                 ZoteroItem(
                     key=key,
                     title=str(payload.get("title") or "Untitled Reference"),
-                    item_type=str(payload.get("itemType") or "item"),
+                    item_type=item_type,
                     creators=creators,
                     date=str(payload.get("date") or ""),
                     url=str(payload.get("url") or ""),
