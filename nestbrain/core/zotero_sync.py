@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import os
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -36,9 +38,16 @@ class ZoteroCollection:
 class ZoteroSyncClient:
     """Connector for local Zotero API (default host: http://localhost:23119/api)."""
 
-    def __init__(self, host: str = "http://localhost:23119", library_id: str = "", timeout: int = 15) -> None:
+    def __init__(
+        self,
+        host: str = "http://localhost:23119",
+        library_id: str = "",
+        api_key: str = "",
+        timeout: int = 15,
+    ) -> None:
         self.host = host.rstrip("/")
         self.library_id = library_id.strip()
+        self.api_key = (api_key or os.getenv("ZOTERO_API_KEY", "")).strip()
         self.timeout = timeout
 
     def check_connection(self) -> bool:
@@ -49,12 +58,12 @@ class ZoteroSyncClient:
             return False
 
     def get_collections(self) -> list[ZoteroCollection]:
-        data = self._request_json(
-            [
-                "/api/users/0/collections?format=json",
-                "/api/collections?format=json",
-            ]
-        )
+        endpoint_options: list[str] = []
+        for scope in self._library_scopes():
+            endpoint_options.append(f"/api/{scope}/collections?format=json")
+        endpoint_options.append("/api/collections?format=json")
+
+        data = self._request_json(endpoint_options)
 
         collections: list[ZoteroCollection] = []
         for raw in data:
@@ -77,11 +86,15 @@ class ZoteroSyncClient:
         return sorted(collections, key=lambda collection: collection.name.lower())
 
     def get_items_for_collection(self, collection_key: str) -> list[ZoteroItem]:
-        endpoint_options = [
-            f"/api/users/0/collections/{collection_key}/items/top?format=json",
-            f"/api/collections/{collection_key}/items/top?format=json",
-            f"/api/items?collection={collection_key}&format=json",
-        ]
+        endpoint_options: list[str] = []
+        for scope in self._library_scopes():
+            endpoint_options.append(f"/api/{scope}/collections/{collection_key}/items/top?format=json")
+        endpoint_options.extend(
+            [
+                f"/api/collections/{collection_key}/items/top?format=json",
+                f"/api/items?collection={collection_key}&format=json",
+            ]
+        )
         data = self._request_json(endpoint_options)
 
         items: list[ZoteroItem] = []
@@ -137,6 +150,44 @@ class ZoteroSyncClient:
 
         return self._sync_collection_objects(filtered)
 
+    def create_collection(self, name: str, parent_collection_key: str = "") -> ZoteroCollection:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ZoteroSyncError("Collection name cannot be empty")
+
+        payload: dict[str, Any] = {"name": clean_name}
+        if parent_collection_key.strip():
+            payload["parentCollection"] = parent_collection_key.strip()
+
+        try:
+            response_payload = self._post_json(
+                [f"/api/{scope}/collections" for scope in self._library_scopes()] + ["/api/collections"],
+                [payload, [payload]],
+            )
+        except ZoteroSyncError as local_error:
+            response_payload = self._create_collection_via_web_api(payload, local_error)
+
+        created_key = self._extract_created_key(response_payload)
+        collections = self.get_collections()
+
+        if created_key:
+            for collection in collections:
+                if collection.key == created_key:
+                    return collection
+
+        # Fallback: return most likely match by exact name
+        exact_name_matches = [collection for collection in collections if collection.name.strip().lower() == clean_name.lower()]
+        if exact_name_matches:
+            return exact_name_matches[0]
+
+        return ZoteroCollection(
+            key=created_key or "",
+            name=clean_name,
+            item_count=0,
+            last_modified=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            status="Idle",
+        )
+
     def _sync_collection_objects(self, collections: list[ZoteroCollection]) -> list[ZoteroCollection]:
         for collection in collections:
             collection.status = "Syncing"
@@ -167,8 +218,137 @@ class ZoteroSyncClient:
 
         raise ZoteroSyncError(f"Unable to fetch from Zotero local API at {self.host}: {last_error}")
 
+    def _post_json(self, path_options: list[str], payload_options: list[Any]) -> Any:
+        last_error: Exception | None = None
+        headers = {"Content-Type": "application/json"}
+
+        for path in path_options:
+            url = f"{self.host}{path}"
+            for payload in payload_options:
+                try:
+                    response = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+                    response.raise_for_status()
+
+                    if not response.text.strip():
+                        return {}
+
+                    try:
+                        return response.json()
+                    except ValueError:
+                        return {"raw": response.text}
+                except requests.RequestException as exc:
+                    last_error = exc
+                    continue
+
+        raise ZoteroSyncError(f"Unable to create collection in Zotero at {self.host}: {last_error}")
+
+    def _extract_created_key(self, payload: Any) -> str:
+        if isinstance(payload, dict):
+            for direct_key in ("key", "collectionKey", "id"):
+                candidate = str(payload.get(direct_key, "")).strip()
+                if candidate:
+                    return candidate
+
+            successful = payload.get("successful")
+            if isinstance(successful, dict):
+                for value in successful.values():
+                    candidate = str(value).strip()
+                    if candidate:
+                        return candidate
+
+            for value in payload.values():
+                candidate = self._extract_created_key(value)
+                if candidate:
+                    return candidate
+
+        if isinstance(payload, list):
+            for item in payload:
+                candidate = self._extract_created_key(item)
+                if candidate:
+                    return candidate
+
+        return ""
+
+    def _create_collection_via_web_api(self, payload: dict[str, Any], local_error: Exception) -> Any:
+        library_scope = self._primary_remote_library_scope()
+        if not library_scope:
+            raise ZoteroSyncError(
+                "Local Zotero API does not support creating collections here, and no Zotero library ID is set. "
+                "Set 'Zotero Library ID' in Settings (e.g., users/123456 or groups/98765)."
+            ) from local_error
+
+        if not self.api_key:
+            raise ZoteroSyncError(
+                "Local Zotero API is read-only for collection creation. "
+                "Provide a write-enabled Zotero API key in Settings to create collections via zotero.org."
+            ) from local_error
+
+        url = f"https://api.zotero.org/{library_scope}/collections"
+        headers = {
+            "Zotero-API-Key": self.api_key,
+            "Zotero-API-Version": "3",
+            "Content-Type": "application/json",
+        }
+
+        # Zotero Web API expects an array of collection objects.
+        body = [payload]
+
+        try:
+            response = requests.post(url, json=body, headers=headers, timeout=self.timeout)
+            response.raise_for_status()
+            if not response.text.strip():
+                return {}
+            try:
+                return response.json()
+            except ValueError:
+                return {"raw": response.text}
+        except requests.RequestException as exc:
+            raise ZoteroSyncError(
+                f"Failed to create collection via Zotero Web API ({library_scope}): {exc}"
+            ) from exc
+
+    def _primary_remote_library_scope(self) -> str:
+        for scope in self._library_scopes():
+            if scope.startswith("users/") and scope != "users/0":
+                return scope
+            if scope.startswith("groups/"):
+                return scope
+        return ""
+
     def _normalize_modified(self, payload: dict[str, Any]) -> str:
         modified = payload.get("dateModified") or payload.get("lastModified")
         if isinstance(modified, str) and modified.strip():
             return modified.strip()
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _library_scopes(self) -> list[str]:
+        raw = self.library_id.strip()
+        scopes: list[str] = []
+
+        def add_scope(scope: str) -> None:
+            clean = scope.strip().strip("/")
+            if clean and clean not in scopes:
+                scopes.append(clean)
+
+        if raw:
+            lowered = raw.lower()
+
+            if lowered.startswith("http://") or lowered.startswith("https://"):
+                parsed = urlparse(raw)
+                parts = [part for part in parsed.path.split("/") if part]
+                for idx, part in enumerate(parts):
+                    token = part.lower()
+                    if token in {"users", "groups"} and idx + 1 < len(parts):
+                        identifier = parts[idx + 1].strip()
+                        if identifier:
+                            add_scope(f"{token}/{identifier}")
+
+            if lowered.startswith("users/") or lowered.startswith("groups/"):
+                add_scope(lowered)
+
+            if raw.isdigit():
+                add_scope(f"users/{raw}")
+                add_scope(f"groups/{raw}")
+
+        add_scope("users/0")
+        return scopes

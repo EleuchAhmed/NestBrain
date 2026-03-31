@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core.pipeline_runner import PipelineConfig, PipelineRunner, save_config
+from ..core.zotero_sync import ZoteroSyncClient
 from ..ui.sidebar import Sidebar
 from ..ui.workspace import Workspace
 from ..ui.zotero_panel import LocalSyncManager, ZoteroPanel
@@ -52,12 +54,15 @@ class SettingsDialog(QDialog):
 
         self.ollama_model_input = QLineEdit(config.ollama_model)
         self.zotero_id_input = QLineEdit(config.zotero_library_id)
+        self.zotero_api_key_input = QLineEdit(config.zotero_api_key)
+        self.zotero_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.ollama_host_input = QLineEdit(config.ollama_host)
         self.zotero_host_input = QLineEdit(config.zotero_host)
 
         form.addRow("Vault Path", vault_wrap)
         form.addRow("Ollama Model", self.ollama_model_input)
         form.addRow("Zotero Library ID", self.zotero_id_input)
+        form.addRow("Zotero API Key", self.zotero_api_key_input)
         form.addRow("Ollama Host", self.ollama_host_input)
         form.addRow("Zotero Host", self.zotero_host_input)
 
@@ -86,6 +91,7 @@ class SettingsDialog(QDialog):
             vault_path=self.vault_input.text().strip(),
             ollama_model=self.ollama_model_input.text().strip() or "mistral",
             zotero_library_id=self.zotero_id_input.text().strip(),
+            zotero_api_key=self.zotero_api_key_input.text().strip(),
             ollama_host=self.ollama_host_input.text().strip() or "http://localhost:11434",
             zotero_host=self.zotero_host_input.text().strip() or "http://localhost:23119",
         )
@@ -107,6 +113,7 @@ class MainWindow(QMainWindow):
         self._sync_thread: QThread | None = None
         self._sync_worker: SyncWorker | None = None
         self._live_collections: list[dict[str, Any]] = []
+        self._collection_items_cache: dict[str, list[dict[str, Any]]] = {}
 
         self._graph_thread: QThread | None = None
         self._graph_worker: GraphWorker | None = None
@@ -134,6 +141,7 @@ class MainWindow(QMainWindow):
         self._apply_dark_theme()
         self._connect_signals()
         self._load_archive()
+        self.workspace.update_vault_overview(self.config.vault_path)
         self._start_initial_sync()
 
     def closeEvent(self, event: Any) -> None:
@@ -149,6 +157,7 @@ class MainWindow(QMainWindow):
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
         self.zotero_panel.library_submitted.connect(self._set_zotero_library)
         self.zotero_panel.collection_selected.connect(self._set_selected_collection)
+        self.zotero_panel.create_collection_requested.connect(self._create_zotero_collection)
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {
@@ -173,6 +182,7 @@ class MainWindow(QMainWindow):
             
             save_config(self.config_path, self.config)
             self.sync_manager.set_vault_path(self.config.vault_path)
+            self.workspace.update_vault_overview(self.config.vault_path)
             
             if validation["error"]:
                 QMessageBox.warning(self, "Vault Configuration Warning", 
@@ -184,6 +194,7 @@ class MainWindow(QMainWindow):
     def _set_zotero_library(self, value: str) -> None:
         self.config = replace(self.config, zotero_library_id=value)
         save_config(self.config_path, self.config)
+        self._collection_items_cache.clear()
         self._start_zotero_sync()
 
     def _set_selected_collection(self, collection_key: str) -> None:
@@ -191,10 +202,37 @@ class MainWindow(QMainWindow):
         self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
         self.config = replace(self.config, selected_collection_key=self._selected_collection_key)
         save_config(self.config_path, self.config)
+        self._load_collection_elements(self._selected_collection_key)
         if self._selected_collection_key:
             self.statusBar().showMessage(f"Pipeline target collection set: {self._selected_collection_key}", 3500)
         else:
             self.statusBar().showMessage("Pipeline target collection cleared (all collections)", 3500)
+
+    def _create_zotero_collection(self, name: str) -> None:
+        collection_name = name.strip()
+        if not collection_name:
+            self.statusBar().showMessage("Enter a collection name before creating", 3000)
+            return
+
+        try:
+            client = ZoteroSyncClient(
+                host=self.config.zotero_host,
+                library_id=self.config.zotero_library_id,
+                api_key=self.config.zotero_api_key,
+            )
+            created = client.create_collection(collection_name)
+
+            self._selected_collection_key = created.key.strip()
+            self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
+            self.config = replace(self.config, selected_collection_key=self._selected_collection_key)
+            save_config(self.config_path, self.config)
+
+            self.zotero_panel.clear_create_collection_input()
+            self.statusBar().showMessage(f"Created Zotero collection: {created.name}", 5000)
+            self._start_zotero_sync()
+            self._load_collection_elements(self._selected_collection_key)
+        except Exception as exc:
+            QMessageBox.critical(self, "Create Collection Failed", f"Could not create Zotero collection:\n{exc}")
 
     def _start_pipeline(self) -> None:
         if self._thread_running(self._pipeline_thread):
@@ -233,9 +271,7 @@ class MainWindow(QMainWindow):
             self.workspace.set_pipeline_running(False)
             return
 
-        # Update vault path label in notes view
-        if hasattr(self.workspace, 'vault_path_label') and self.config.vault_path:
-            self.workspace.vault_path_label.setText(f"Vault: {Path(self.config.vault_path).name}")
+        self.workspace.update_vault_overview(self.config.vault_path)
 
         self.workspace.update_notes(notes)
         self.workspace.update_graph(graph_payload)
@@ -244,6 +280,7 @@ class MainWindow(QMainWindow):
 
         self._load_archive()
         self.sync_manager.mark_synced()
+        self.workspace.update_vault_overview(self.config.vault_path)
 
         if notes or collections:
             self._start_graph_worker(notes, collections)
@@ -273,6 +310,7 @@ class MainWindow(QMainWindow):
             return
 
         self._live_collections = []
+        self._collection_items_cache.clear()
         self.zotero_panel.update_collections([])
 
         self._sync_thread = QThread(self)
@@ -295,10 +333,34 @@ class MainWindow(QMainWindow):
 
     def _on_sync_done(self) -> None:
         self.zotero_panel.set_connection_active(bool(self._live_collections))
+        self._load_collection_elements(self._selected_collection_key)
 
     def _on_sync_error(self, message: str) -> None:
         self.zotero_panel.set_connection_active(False)
         self.statusBar().showMessage(f"Zotero sync failed: {message}", 6000)
+
+    def _load_collection_elements(self, collection_key: str) -> None:
+        key = collection_key.strip()
+        if not key:
+            self.zotero_panel.update_collection_elements([])
+            return
+
+        if key in self._collection_items_cache:
+            self.zotero_panel.update_collection_elements(self._collection_items_cache[key])
+            return
+
+        try:
+            client = ZoteroSyncClient(
+                host=self.config.zotero_host,
+                library_id=self.config.zotero_library_id,
+                api_key=self.config.zotero_api_key,
+            )
+            items = [asdict(item) for item in client.get_items_for_collection(key)]
+            self._collection_items_cache[key] = items
+            self.zotero_panel.update_collection_elements(items)
+        except Exception as exc:
+            self.zotero_panel.update_collection_elements([])
+            self.statusBar().showMessage(f"Failed to load collection elements: {exc}", 6000)
 
     def _start_graph_worker(self, notes: list[dict[str, Any]], collections: list[dict[str, Any]]) -> None:
         if self._thread_running(self._graph_thread):

@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -160,6 +161,7 @@ class CollectionItemWidget(QFrame):
 class ZoteroPanel(QWidget):
     library_submitted = pyqtSignal(str)
     collection_selected = pyqtSignal(str)
+    create_collection_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -195,6 +197,18 @@ class ZoteroPanel(QWidget):
         source_row.addWidget(self.source_input)
         source_row.addWidget(self.add_button)
 
+        create_label = QLabel("ADD ZOTERO COLLECTION")
+        create_label.setObjectName("PanelSubLabel")
+
+        create_row = QHBoxLayout()
+        self.new_collection_input = QLineEdit()
+        self.new_collection_input.setPlaceholderText("Collection name...")
+        self.create_collection_button = QPushButton("Create")
+        self.create_collection_button.clicked.connect(self._emit_create_collection)
+
+        create_row.addWidget(self.new_collection_input)
+        create_row.addWidget(self.create_collection_button)
+
         collections_label_row = QHBoxLayout()
         collections_label = QLabel("ACTIVE COLLECTIONS")
         collections_label.setObjectName("PanelSubLabel")
@@ -207,6 +221,16 @@ class ZoteroPanel(QWidget):
         self.collection_list = QListWidget()
         self.collection_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.collection_list.itemSelectionChanged.connect(self._emit_selected_collection)
+
+        self.collection_dropdown = QComboBox()
+        self.collection_dropdown.setObjectName("CollectionDropdown")
+        self.collection_dropdown.currentIndexChanged.connect(self._emit_selected_dropdown_collection)
+
+        element_label = QLabel("COLLECTION ELEMENTS")
+        element_label.setObjectName("PanelSubLabel")
+        self.element_dropdown = QComboBox()
+        self.element_dropdown.setObjectName("ElementDropdown")
+        self.element_dropdown.addItem("Select a collection to load elements")
 
         self.sync_chip = QFrame()
         self.sync_chip.setObjectName("SyncChip")
@@ -230,10 +254,16 @@ class ZoteroPanel(QWidget):
         root.addLayout(header_row)
         root.addWidget(source_label)
         root.addLayout(source_row)
+        root.addWidget(create_label)
+        root.addLayout(create_row)
         root.addLayout(collections_label_row)
+        root.addWidget(self.collection_dropdown)
         root.addWidget(self.collection_list, 1)
+        root.addWidget(element_label)
+        root.addWidget(self.element_dropdown)
         root.addWidget(self.sync_chip)
         self._selected_collection_key = ""
+        self._suppress_dropdown_signal = False
 
     def set_connection_active(self, active: bool) -> None:
         if active:
@@ -245,6 +275,9 @@ class ZoteroPanel(QWidget):
 
     def update_collections(self, collections: list[dict[str, Any]]) -> None:
         self.collection_list.clear()
+        self._suppress_dropdown_signal = True
+        self.collection_dropdown.clear()
+        self.collection_dropdown.addItem("Select collection...", "")
         self.folder_count.setText(f"{len(collections)} Folders")
 
         selected_item: QListWidgetItem | None = None
@@ -263,9 +296,21 @@ class ZoteroPanel(QWidget):
             item.setSizeHint(widget.sizeHint())
             self.collection_list.addItem(item)
             self.collection_list.setItemWidget(item, widget)
+            self.collection_dropdown.addItem(display.name, collection_key)
 
             if collection_key and collection_key == self._selected_collection_key:
                 selected_item = item
+
+        if self._selected_collection_key:
+            idx = self.collection_dropdown.findData(self._selected_collection_key)
+            if idx >= 0:
+                self.collection_dropdown.setCurrentIndex(idx)
+            else:
+                self.collection_dropdown.setCurrentIndex(0)
+        else:
+            self.collection_dropdown.setCurrentIndex(0)
+
+        self._suppress_dropdown_signal = False
 
         if selected_item is not None:
             selected_item.setSelected(True)
@@ -276,9 +321,34 @@ class ZoteroPanel(QWidget):
 
     def set_selected_collection_key(self, collection_key: str) -> None:
         self._selected_collection_key = collection_key.strip()
+        idx = self.collection_dropdown.findData(self._selected_collection_key)
+        self._suppress_dropdown_signal = True
+        if idx >= 0:
+            self.collection_dropdown.setCurrentIndex(idx)
+        else:
+            self.collection_dropdown.setCurrentIndex(0)
+        self._suppress_dropdown_signal = False
+
+    def update_collection_elements(self, items: list[dict[str, Any]]) -> None:
+        self.element_dropdown.clear()
+        if not items:
+            self.element_dropdown.addItem("No elements found")
+            return
+
+        for item in items:
+            title = str(item.get("title") or "Untitled")
+            item_type = str(item.get("item_type") or "item")
+            item_key = str(item.get("key") or "")
+            self.element_dropdown.addItem(f"{title} [{item_type}]", item_key)
 
     def _emit_library(self) -> None:
         self.library_submitted.emit(self.source_input.text().strip())
+
+    def _emit_create_collection(self) -> None:
+        self.create_collection_requested.emit(self.new_collection_input.text().strip())
+
+    def clear_create_collection_input(self) -> None:
+        self.new_collection_input.clear()
 
     def _emit_selected_collection(self) -> None:
         items = self.collection_list.selectedItems()
@@ -290,4 +360,28 @@ class ZoteroPanel(QWidget):
         selected = items[0]
         key = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip()
         self._selected_collection_key = key
+        idx = self.collection_dropdown.findData(key)
+        if idx >= 0:
+            self._suppress_dropdown_signal = True
+            self.collection_dropdown.setCurrentIndex(idx)
+            self._suppress_dropdown_signal = False
+        self.collection_selected.emit(key)
+
+    def _emit_selected_dropdown_collection(self, index: int) -> None:
+        if self._suppress_dropdown_signal:
+            return
+
+        key = str(self.collection_dropdown.itemData(index) or "").strip()
+        if key == self._selected_collection_key:
+            return
+
+        self._selected_collection_key = key
+
+        for row in range(self.collection_list.count()):
+            item = self.collection_list.item(row)
+            if not item:
+                continue
+            list_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+            item.setSelected(bool(key) and list_key == key)
+
         self.collection_selected.emit(key)

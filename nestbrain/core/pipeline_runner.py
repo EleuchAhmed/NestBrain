@@ -35,6 +35,7 @@ NOTEBOOKLM_QUERIES = [
 DEFAULT_CONFIG: dict[str, Any] = {
     "vault_path": "",
     "zotero_library_id": "",
+    "zotero_api_key": "",
     "selected_collection_key": "",
     "ollama_model": "mistral",
     "ollama_host": "http://localhost:11434",
@@ -47,6 +48,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 class PipelineConfig:
     vault_path: str
     zotero_library_id: str
+    zotero_api_key: str
     selected_collection_key: str
     ollama_model: str
     ollama_host: str
@@ -107,7 +109,11 @@ class PipelineRunner:
             }
 
         parser = ObsidianParser(config.vault_path)
-        zotero = ZoteroSyncClient(host=config.zotero_host, library_id=config.zotero_library_id)
+        zotero = ZoteroSyncClient(
+            host=config.zotero_host,
+            library_id=config.zotero_library_id,
+            api_key=config.zotero_api_key,
+        )
         ollama = OllamaClient(host=config.ollama_host, model=config.ollama_model)
         graph_builder = KnowledgeGraphBuilder()
 
@@ -474,6 +480,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
     return PipelineConfig(
         vault_path=str(merged.get("vault_path", "")),
         zotero_library_id=str(merged.get("zotero_library_id", "")),
+        zotero_api_key=str(merged.get("zotero_api_key", "")),
         selected_collection_key=str(merged.get("selected_collection_key", "")),
         ollama_model=str(merged.get("ollama_model", "mistral")),
         ollama_host=str(merged.get("ollama_host", "http://localhost:11434")),
@@ -486,6 +493,7 @@ def save_config(config_path: str | Path, config: PipelineConfig) -> None:
     payload = {
         "vault_path": config.vault_path,
         "zotero_library_id": config.zotero_library_id,
+        "zotero_api_key": config.zotero_api_key,
         "selected_collection_key": config.selected_collection_key,
         "ollama_model": config.ollama_model,
         "ollama_host": config.ollama_host,

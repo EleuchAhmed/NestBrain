@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,6 +18,8 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -154,9 +158,42 @@ class Workspace(QWidget):
         self.notes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.notes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
+        lower_row = QHBoxLayout()
+
+        vault_panel = QFrame()
+        vault_panel.setObjectName("FeatureCard")
+        vault_layout = QVBoxLayout(vault_panel)
+        vault_layout.setContentsMargins(10, 10, 10, 10)
+
+        vault_header = QLabel("Vault Structure")
+        vault_header.setObjectName("PanelHeader")
+        self.vault_tree = QTreeWidget()
+        self.vault_tree.setHeaderLabels(["Path", "Type"])
+        self.vault_tree.setAlternatingRowColors(True)
+
+        vault_layout.addWidget(vault_header)
+        vault_layout.addWidget(self.vault_tree)
+
+        video_panel = QFrame()
+        video_panel.setObjectName("FeatureCard")
+        video_layout = QVBoxLayout(video_panel)
+        video_layout.setContentsMargins(10, 10, 10, 10)
+
+        video_header = QLabel("NotebookLM Videos")
+        video_header.setObjectName("PanelHeader")
+        self.video_list = QListWidget()
+        self.video_list.itemDoubleClicked.connect(self._open_selected_video)
+
+        video_layout.addWidget(video_header)
+        video_layout.addWidget(self.video_list)
+
+        lower_row.addWidget(vault_panel, 2)
+        lower_row.addWidget(video_panel, 1)
+
         layout.addLayout(header_layout)
         layout.addWidget(self.notes_search)
         layout.addWidget(self.notes_table)
+        layout.addLayout(lower_row)
         return widget
 
     def _build_archive_view(self) -> QWidget:
@@ -208,6 +245,20 @@ class Workspace(QWidget):
         self.graph_3d_view.set_graph_data(graph_payload)
         self.brain_map_view.set_graph_data(graph_payload)
 
+    def update_vault_overview(self, vault_path: str) -> None:
+        path = Path(vault_path).expanduser() if vault_path else Path()
+        if path.exists() and path.is_dir():
+            self.vault_path_label.setText(f"Vault: {path.name}")
+            self._render_vault_tree(path)
+            self._render_video_list(path)
+            return
+
+        self.vault_path_label.setText("Vault: not configured")
+        self.vault_tree.clear()
+        self.video_list.clear()
+        QTreeWidgetItem(self.vault_tree, ["Vault path unavailable", "-"])
+        self.video_list.addItem("No videos found")
+
     def _render_notes_table(self, notes: list[dict[str, Any]]) -> None:
         self.notes_table.setRowCount(len(notes))
         for row, note in enumerate(notes):
@@ -238,3 +289,64 @@ class Workspace(QWidget):
                 filtered.append(note)
 
         self._render_notes_table(filtered)
+
+    def _render_vault_tree(self, vault_path: Path) -> None:
+        self.vault_tree.clear()
+        root_item = QTreeWidgetItem([vault_path.name, "folder"])
+        self.vault_tree.addTopLevelItem(root_item)
+
+        excluded = {".git", ".obsidian", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+        max_nodes = 1200
+        node_count = 0
+
+        def add_children(parent: QTreeWidgetItem, folder: Path, depth: int) -> None:
+            nonlocal node_count
+            if depth > 4 or node_count >= max_nodes:
+                return
+
+            try:
+                children = sorted(folder.iterdir(), key=lambda child: (child.is_file(), child.name.lower()))
+            except Exception:
+                return
+
+            for child in children:
+                if node_count >= max_nodes:
+                    break
+                if child.name in excluded:
+                    continue
+                if child.is_dir() or child.suffix.lower() in {".md", ".mp4", ".webm", ".mov"}:
+                    child_type = "folder" if child.is_dir() else "file"
+                    child_item = QTreeWidgetItem([child.name, child_type])
+                    parent.addChild(child_item)
+                    node_count += 1
+                    if child.is_dir():
+                        add_children(child_item, child, depth + 1)
+
+        add_children(root_item, vault_path, 0)
+        self.vault_tree.expandToDepth(1)
+
+    def _render_video_list(self, vault_path: Path) -> None:
+        self.video_list.clear()
+        asset_dir = vault_path / "assets"
+        video_paths: list[Path] = []
+
+        if asset_dir.exists() and asset_dir.is_dir():
+            for suffix in ("*.mp4", "*.webm", "*.mov"):
+                video_paths.extend(asset_dir.rglob(suffix))
+
+        if not video_paths:
+            self.video_list.addItem("No videos found")
+            return
+
+        for video_path in sorted(video_paths, key=lambda item: item.stat().st_mtime, reverse=True):
+            modified = datetime.fromtimestamp(video_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+            display_path = video_path.relative_to(vault_path).as_posix()
+            item = QListWidgetItem(f"{display_path} ({modified})")
+            item.setData(Qt.ItemDataRole.UserRole, str(video_path))
+            self.video_list.addItem(item)
+
+    def _open_selected_video(self, item: QListWidgetItem) -> None:
+        file_path = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+        if not file_path:
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
