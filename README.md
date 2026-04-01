@@ -7,13 +7,13 @@ By running Nestbrain, you automate the extraction, synthesis, and writing of aca
 ## Features
 - **Standalone Architecture:** Single-click PyInstaller executable; no Node.js or TypeScript required.
 - **Native Browser Automation:** Uses underlying Playwright libraries combined with native `notebooklm-py` API for NotebookLM synchronization.
-- **Ollama Integration:** Summarizes references locally, offline, using state-of-the-art open models like Mistral and DeepSeek.
+- **DeepSeek Integration:** Summarizes references using NVIDIA NIM DeepSeek V3.1 via API.
 - **Zotero & Obsidian Bridges:** Automatically pulls recent Zotero highlights, generates rich conceptual notes, and deposits them cleanly formatted into Obsidian.
 
 ## Requirements
 
 1. **Python 3.11+** (if running from source)
-2. **Ollama**: Must be running locally (default: `http://localhost:11434`)
+2. **NVIDIA API Key**: Must provide `NVIDIA_API_KEY` environment variable.
 3. **Zotero**: Should be running locally (default: `http://localhost:23119`) with API integrations enabled.
 4. **NotebookLM**: You must manually authenticate to NotebookLM the first time via the App's browser context.
 
@@ -54,7 +54,7 @@ The standalone `.exe` will be located in `scripts\dist\Nestbrain.exe`. You can d
 ## Environment Variables (.env)
 - `OBSIDIAN_VAULT_PATH`: Absolute path to your Obsidian vault.
 - `ZOTERO_LIBRARY_ID` and `ZOTERO_API_KEY`: Credentials for Zotero sync.
-- `OLLAMA_HOST`: (default: http://localhost:11434).
+- `NVIDIA_API_KEY`: Your NVIDIA NIM API key for DeepSeek V3.1.
 
 ## Architecture
 - **Application Core**: `nestbrain/main.py`

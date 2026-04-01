@@ -227,7 +227,9 @@ class PipelineWorkflow:
             }
         
         except Exception as e:
-            self._emit(status_callback, f"❌ Collection error: {collection.name}: {e}")
+            import traceback
+            tb = traceback.format_exc()
+            self._emit(status_callback, f"❌ Collection error: {collection.name}: {e}\n{tb}")
             return {"success": False, "reason": str(e)}
     
     def _emit(self, callback: Callable[[Any], None] | None, payload: Any) -> None:

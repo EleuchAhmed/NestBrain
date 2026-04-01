@@ -4,12 +4,14 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
+from dotenv import load_dotenv
 
 from nestbrain.core.pipeline_runner import ensure_config, load_config
 from nestbrain.ui.main_window import MainWindow
 
 
 def main() -> int:
+    load_dotenv()
     app_root = Path(__file__).resolve().parent
     config_path = ensure_config(app_root)
     config = load_config(config_path)

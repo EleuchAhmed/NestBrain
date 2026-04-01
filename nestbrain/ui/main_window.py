@@ -59,10 +59,10 @@ class SettingsDialog(QDialog):
         self.zotero_host_input = QLineEdit(config.zotero_host)
 
         form.addRow("Vault Path", vault_wrap)
-        form.addRow("Ollama Model", self.ollama_model_input)
+        form.addRow("LLM Model", self.ollama_model_input)
         form.addRow("Zotero Library ID", self.zotero_id_input)
         form.addRow("Zotero API Key", self.zotero_api_key_input)
-        form.addRow("Ollama Host", self.ollama_host_input)
+        form.addRow("LLM Host/Base URL", self.ollama_host_input)
         form.addRow("Zotero Host", self.zotero_host_input)
 
         button_row = QHBoxLayout()
@@ -88,10 +88,10 @@ class SettingsDialog(QDialog):
         return replace(
             self._config,
             vault_path=self.vault_input.text().strip(),
-            ollama_model=self.ollama_model_input.text().strip() or "mistral",
+            ollama_model=self.ollama_model_input.text().strip() or "deepseek-ai/deepseek-v3-1",
             zotero_library_id=self.zotero_id_input.text().strip(),
             zotero_api_key=self.zotero_api_key_input.text().strip(),
-            ollama_host=self.ollama_host_input.text().strip() or "http://localhost:11434",
+            ollama_host=self.ollama_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",
             zotero_host=self.zotero_host_input.text().strip() or "http://localhost:23119",
         )
 

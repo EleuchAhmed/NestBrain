@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
-from dataclasses import asdict
+
 
 from ..note_renderer import (
     SynthesisResult,
@@ -68,7 +68,7 @@ async def enrich_vault_notes(
     progress_callback: Callable[[int], None] | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> None:
-    """Enrich existing vault notes with summaries and semantic tags via Ollama.
+    """Enrich existing vault notes with summaries and semantic tags via AI.
     
     Args:
         notes: List of ObsidianNote objects to enrich

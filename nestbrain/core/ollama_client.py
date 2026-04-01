@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
-import requests
+from openai import OpenAI
 
 
 class OllamaClientError(Exception):
@@ -11,29 +12,36 @@ class OllamaClientError(Exception):
 
 
 class OllamaClient:
-    """HTTP client wrapper for local Ollama service."""
+    """HTTP client wrapper for NVIDIA NIM API (DeepSeek V3.1)."""
 
-    def __init__(self, host: str = "http://localhost:11434", model: str = "mistral", timeout: int = 90) -> None:
+    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-v3-1", timeout: int = 90) -> None:
         self.host = host.rstrip("/")
         self.model = model
         self.timeout = timeout
+        
+        # Ensure the client uses OpenAI-compatible SDK format with Bearer token
+        self.client = OpenAI(
+            base_url=self.host,
+            api_key=os.environ["NVIDIA_API_KEY"]
+        )
 
     def generate(self, prompt: str, model: str | None = None) -> str:
-        endpoint = f"{self.host}/api/generate"
-        payload = {
-            "model": model or self.model,
-            "prompt": prompt,
-            "stream": False,
-        }
         try:
-            response = requests.post(endpoint, json=payload, timeout=self.timeout)
-            response.raise_for_status()
-            data: dict[str, Any] = response.json()
-            return str(data.get("response", "")).strip()
-        except requests.RequestException as exc:
-            raise OllamaClientError(f"Ollama request failed: {exc}") from exc
-        except ValueError as exc:
-            raise OllamaClientError("Invalid JSON response from Ollama") from exc
+            response = self.client.chat.completions.create(
+                model=model or self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=4096,
+                stream=False
+            )
+            content = response.choices[0].message.content
+            if content is None:
+                return ""
+            return content.strip()
+        except KeyError as exc:
+            raise OllamaClientError("Missing NVIDIA_API_KEY environment variable") from exc
+        except Exception as exc:
+            raise OllamaClientError(f"API request failed: {exc}") from exc
 
     def summarize_text(self, text: str, max_chars: int = 7000) -> str:
         clipped_text = text[:max_chars]

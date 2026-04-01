@@ -1,8 +1,8 @@
-"""Synthesis stage: grounded note + Ollama synthesis for content sections."""
+"""Synthesis stage: grounded note + DeepSeek synthesis for content sections."""
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from ..notebooklm_bridge import NotebookLMBridge
 from ..note_renderer import SynthesisResult
@@ -17,7 +17,7 @@ async def run_synthesis(
     ollama: OllamaClient,
     status_callback: Callable[[str], None] | None = None,
 ) -> SynthesisResult:
-    """Run synthesis via NotebookLM grounding + Ollama for 6 sections.
+    """Run synthesis via NotebookLM grounding + DeepSeek for 6 sections.
     
     Args:
         collection_name: Name of the collection
@@ -50,7 +50,7 @@ async def run_synthesis(
     combined_context = "\n\n---\n\n".join(interrogation_responses)
     combined_context += f"\n\n{synthesis.conceptual_deep_dive}"
     
-    # Ollama synthesis for remaining sections
+    # DeepSeek synthesis for remaining sections
     synthesis_tasks = [
         ("academic_synthesis", f"Generate YAML frontmatter and TL;DR for '{collection_name}' research note."),
         ("actionable_knowledge", f"Extract 5-10 actionable takeaways and practical guidance from this research on {collection_name}."),
@@ -62,7 +62,7 @@ async def run_synthesis(
     for field_name, prompt in synthesis_tasks:
         try:
             if status_callback:
-                status_callback(f"🤖 Ollama: {prompt[:40]}...")
+                status_callback(f"🤖 DeepSeek: {prompt[:40]}...")
             
             # Truncate context to 5000 chars for API limits
             response = ollama.generate(

@@ -65,20 +65,21 @@ async def ingest_sources(
         ingested = False
         
         # Try PDF first
-        if item.pdfPath and Path(item.pdfPath).exists():
-            ingested = await bridge.ingest_file(notebook_id, item.pdfPath)
+        if getattr(item, "pdfPath", None) and Path(getattr(item, "pdfPath")).exists():
+            ingested = await bridge.ingest_file(notebook_id, getattr(item, "pdfPath"))
         # Fall back to URL
-        elif item.url:
-            ingested = await bridge.ingest_url(notebook_id, item.url)
+        elif getattr(item, "url", None):
+            ingested = await bridge.ingest_url(notebook_id, getattr(item, "url"))
         # Final fallback: abstract text
-        elif item.abstract:
-            content = f"# {item.title}\n"
-            if item.authors:
-                content += f"**Authors:** {item.authors}\n"
-            if item.date:
-                content += f"**Date:** {item.date}\n"
-            content += f"\n## Abstract\n{item.abstract}"
-            ingested = await bridge.ingest_text(notebook_id, item.title, content)
+        elif getattr(item, "abstract", None):
+            content = f"# {getattr(item, 'title', 'Untitled')}\n"
+            creators = getattr(item, "creators", [])
+            if creators:
+                content += f"**Authors:** {', '.join(creators) if isinstance(creators, list) else creators}\n"
+            if getattr(item, "date", None):
+                content += f"**Date:** {getattr(item, 'date')}\n"
+            content += f"\n## Abstract\n{getattr(item, 'abstract')}"
+            ingested = await bridge.ingest_text(notebook_id, getattr(item, "title", "Untitled"), content)
         
         if ingested:
             successful_keys.append(item.key)

@@ -33,4 +33,4 @@ shell.Run cmd, 0, False
 
 MsgBox "Research Pipeline started!" & vbCrLf & vbCrLf & _
        "- VcXsrv X server: Running" & vbCrLf & _
-       "- Docker services: Starting (pipeline, watcher, ollama, nestbrain)", vbInformation, "Research Pipeline Launcher"
+       "- Docker services: Starting (pipeline, watcher, nestbrain)", vbInformation, "Research Pipeline Launcher"

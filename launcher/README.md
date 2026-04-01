@@ -22,5 +22,5 @@ Purpose: central, unambiguous startup entry points for local development and des
 ## Runtime connection
 
 1. `start-research-pipeline.vbs` starts VcXsrv and then executes `docker compose --profile desktop up -d` from repository root.
-2. Docker starts `watcher`, `pipeline`, `ollama`, and optional `nestbrain` services.
+2. Docker starts `watcher`, `pipeline`, and optional `nestbrain` services.
 3. The TypeScript orchestrator runs via `dist/agents/pipeline.js` which delegates to `src/features/pipeline/workflow.ts`.

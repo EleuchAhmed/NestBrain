@@ -21,8 +21,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "zotero_library_id": "",
     "zotero_api_key": "",
     "selected_collection_key": "",
-    "ollama_model": "mistral",
-    "ollama_host": "http://localhost:11434",
+    "ollama_model": "deepseek-ai/deepseek-v3-1",
+    "ollama_host": "https://integrate.api.nvidia.com/v1",
     "zotero_host": "http://localhost:23119",
     "theme": "dark",
 }
@@ -237,8 +237,8 @@ def load_config(config_path: str | Path) -> PipelineConfig:
         zotero_library_id=str(merged.get("zotero_library_id", "")),
         zotero_api_key=str(merged.get("zotero_api_key", "")),
         selected_collection_key=str(merged.get("selected_collection_key", "")),
-        ollama_model=str(merged.get("ollama_model", "mistral")),
-        ollama_host=str(merged.get("ollama_host", "http://localhost:11434")),
+        ollama_model=str(merged.get("ollama_model", "deepseek-ai/deepseek-v3-1")),
+        ollama_host=str(merged.get("ollama_host", "https://integrate.api.nvidia.com/v1")),
         zotero_host=str(merged.get("zotero_host", "http://localhost:23119")),
         theme=str(merged.get("theme", "dark")),
     )
