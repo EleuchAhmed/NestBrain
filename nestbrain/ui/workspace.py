@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
 )
 
 from .brain_map_view import BrainMapView
-from .graph_3d_view import Graph3DView
 
 
 class FeatureCard(QFrame):
@@ -67,7 +66,6 @@ class Workspace(QWidget):
             "notes": 1,
             "archive": 2,
             "brain": 3,
-            "graph": 4,
         }
 
         self._all_notes: list[dict[str, Any]] = []  # Initialize to avoid filter errors before first run
@@ -76,13 +74,11 @@ class Workspace(QWidget):
         self.notes_view = self._build_notes_view()
         self.archive_view = self._build_archive_view()
         self.brain_map_view = BrainMapView()
-        self.graph_3d_view = Graph3DView()
-
+        
         self.stacked.addWidget(self.home_view)
         self.stacked.addWidget(self.notes_view)
         self.stacked.addWidget(self.archive_view)
         self.stacked.addWidget(self.brain_map_view)
-        self.stacked.addWidget(self.graph_3d_view)
 
         root.addWidget(self.stacked)
         self.set_view("home")
@@ -242,7 +238,6 @@ class Workspace(QWidget):
             self.archive_list.addItem(item)
 
     def update_graph(self, graph_payload: dict[str, Any]) -> None:
-        self.graph_3d_view.set_graph_data(graph_payload)
         self.brain_map_view.set_graph_data(graph_payload)
 
     def update_vault_overview(self, vault_path: str) -> None:

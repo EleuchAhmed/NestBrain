@@ -1,10 +1,12 @@
 Option Explicit
 
-Dim fso, shell, repoPath, pythonwPath, cmd
+Dim fso, shell, launcherDir, repoPath, pythonwPath, cmd
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 
-repoPath = fso.GetParentFolderName(WScript.ScriptFullName)
+' This script lives in launcher/windows, so go two levels up to repo root.
+launcherDir = fso.GetParentFolderName(WScript.ScriptFullName)
+repoPath = fso.GetParentFolderName(launcherDir)
 pythonwPath = repoPath & "\.venv\Scripts\pythonw.exe"
 
 If Not fso.FileExists(pythonwPath) Then

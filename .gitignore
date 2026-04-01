@@ -1,10 +1,51 @@
-.env
-auth.json
-staging/
-node_modules/
-*.log
+# Python artifacts
 __pycache__/
-*.pyc
-nestbrain/config.json
-nestbrain/runs/
-nestbrain/**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Application specific
+pipeline_logs/
+runs/
+staging/
+config.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+
+# Node.js
+node_modules/
+
+# Logs
+*.log
+

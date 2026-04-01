@@ -5,13 +5,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QThread, Qt
+from PyQt6.QtCore import QThread
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
@@ -143,8 +142,29 @@ class MainWindow(QMainWindow):
         self._load_archive()
         self.workspace.update_vault_overview(self.config.vault_path)
         self._start_initial_sync()
+        self._trigger_startup_scan()
+
+    def _trigger_startup_scan(self) -> None:
+        """Scan vault and render brain map immediately on startup."""
+        if not self.config.vault_path:
+            return
+            
+        try:
+            from ..core.obsidian_parser import ObsidianParser
+            parser = ObsidianParser(self.config.vault_path)
+            notes = parser.parse_vault()
+            
+            # Convert notes to dicts for the worker
+            notes_payload = [asdict(note) for note in notes]
+            self.workspace.update_notes(notes_payload)
+            
+            # Start graph worker with initial notes (empty collections for now)
+            self._start_graph_worker(notes_payload, [])
+        except Exception as exc:
+            self.statusBar().showMessage(f"Startup scan failed: {exc}", 5000)
 
     def closeEvent(self, event: Any) -> None:
+        save_config(self.config_path, self.config)
         self.sync_manager.stop()
         self._stop_thread(self._pipeline_thread)
         self._stop_thread(self._sync_thread)
@@ -161,7 +181,6 @@ class MainWindow(QMainWindow):
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {
-            "knowledge_map": "graph",
             "archive": "archive",
             "obsidian_notes": "notes",
             "zotero_sync": "home",

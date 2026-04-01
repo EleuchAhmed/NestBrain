@@ -31,11 +31,10 @@ class Sidebar(QWidget):
         self.setMaximumWidth(240)
 
         self.nav_items: list[NavItem] = [
-            NavItem("knowledge_map", "Knowledge Map", "◫"),
+            NavItem("brain_map", "Brain-Map", "◉"),
             NavItem("archive", "Archive", "🗃"),
             NavItem("obsidian_notes", "Obsidian Notes", "🗎"),
             NavItem("zotero_sync", "Zotero Sync", "📚"),
-            NavItem("brain_map", "Brain-Map", "◉"),
         ]
 
         root_layout = QVBoxLayout(self)
@@ -76,7 +75,7 @@ class Sidebar(QWidget):
         self.settings_button.clicked.connect(self.settings_clicked.emit)
 
         root_layout.addWidget(self.settings_button)
-        self.set_active("knowledge_map")
+        self.set_active("brain_map")
 
     def set_active(self, key: str) -> None:
         if key in self.buttons:
