@@ -10,7 +10,7 @@ class EntityExtractor:
     Scans the Master Note to extract technical terms and knowledge entities as a JSON list.
     """
     
-    MODEL = "deepseek-v3.1"
+    MODEL = "deepseek-ai/deepseek-v3.1"
 
     def __init__(self):
         self.client = nvidia_client

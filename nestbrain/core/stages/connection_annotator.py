@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict
+from typing import List
 from pathlib import Path
 from ..nvidia_client import nvidia_client
 
@@ -12,7 +12,7 @@ class ConnectionAnnotator:
     appending it to the notes.
     """
     
-    MODEL = "deepseek-v3.1"
+    MODEL = "deepseek-ai/deepseek-v3.1"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)

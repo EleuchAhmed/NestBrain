@@ -11,7 +11,7 @@ class SemanticAuditor:
     filter out low-relevance "false positive" connections.
     """
     
-    MODEL = "rerank-qa-mistral-4b"
+    MODEL = "nvidia/rerank-qa-mistral-4b"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)

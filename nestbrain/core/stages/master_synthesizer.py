@@ -1,6 +1,5 @@
-import json
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict
 from ..nvidia_client import nvidia_client
 
 logger = logging.getLogger(__name__)
@@ -11,7 +10,7 @@ class MasterSynthesizer:
     with headers and Obsidian formatting.
     """
     
-    MODEL = "deepseek-v3.2"
+    MODEL = "deepseek-ai/deepseek-v3.2"
 
     def __init__(self):
         self.client = nvidia_client

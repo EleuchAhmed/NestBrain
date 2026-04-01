@@ -14,7 +14,7 @@ class VectorIndexer:
     Currently uses flat JSON storage for lightweight viability.
     """
     
-    MODEL = "nv-embedqa-e5-v5"
+    MODEL = "nvidia/nv-embedqa-e5-v5"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)

@@ -1,6 +1,4 @@
-import os
 import logging
-from typing import Dict, Any
 from pathlib import Path
 from ..nvidia_client import nvidia_client
 
@@ -12,8 +10,8 @@ class NoteSeeder:
     and patching existing notes (The Surgeon - glm-4.7).
     """
 
-    MODEL_SEEDER = "devstral-2-123b"
-    MODEL_SURGEON = "glm-4.7"
+    MODEL_SEEDER = "devstral-2-123b-instruct-2512"
+    MODEL_SURGEON = "THUDM/glm-4.7"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)

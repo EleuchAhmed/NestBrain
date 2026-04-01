@@ -14,7 +14,7 @@ class OllamaClientError(Exception):
 class OllamaClient:
     """HTTP client wrapper for NVIDIA NIM API (DeepSeek V3.1)."""
 
-    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-v3-1", timeout: int = 90) -> None:
+    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-v3.1", timeout: int = 90) -> None:
         self.host = host.rstrip("/")
         self.model = model
         self.timeout = timeout
