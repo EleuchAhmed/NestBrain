@@ -1,0 +1,64 @@
+import json
+import logging
+from typing import List
+from ..nvidia_client import nvidia_client
+
+logger = logging.getLogger(__name__)
+
+class EntityExtractor:
+    """Layer 2: The Scout (deepseek-v3.1)
+    Scans the Master Note to extract technical terms and knowledge entities as a JSON list.
+    """
+    
+    MODEL = "deepseek-v3.1"
+
+    def __init__(self):
+        self.client = nvidia_client
+
+    def extract_entities(self, master_note: str) -> List[str]:
+        """
+        Parses the fully synthesized master note and isolates all standalone 
+        concepts, technical details, people, frameworks, etc.
+        Returns a list of clean string entity names.
+        """
+        logger.info("Extracting knowledge entities from Master Note...")
+
+        system_prompt = (
+            "You are an expert Data Scout. Your job is to extract fundamental knowledge entities "
+            "(technical terms, frameworks, prominent figures, specific algorithms, protocols) from the provided text.\n"
+            "Return ONLY a cleanly formatted JSON array of strings containing the exact entity names.\n"
+            "Ignore generic words, focus on noun phrases that deserve their own independent Wiki-style page.\n"
+            "Do NOT include markdown formatting or explanations."
+        )
+
+        user_content = f"MASTER NOTE CONTENT:\n{master_note}"
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ]
+
+        try:
+            response_text = self.client.generate_chat_completion(
+                model=self.MODEL,
+                messages=messages,
+                temperature=0.1
+            )
+            
+            cleaned_text = response_text.strip()
+            if cleaned_text.startswith("```json"):
+                cleaned_text = cleaned_text[7:]
+            if cleaned_text.endswith("```"):
+                cleaned_text = cleaned_text[:-3]
+                
+            entities = json.loads(cleaned_text.strip())
+            
+            if not isinstance(entities, list):
+                raise ValueError("Response was not a JSON list of strings.")
+                
+            logger.info(f"Extracted {len(entities)} distinct entities.")
+            return [str(e).strip() for e in entities if e]
+
+        except Exception as e:
+            logger.error(f"Failed to extract entities: {e}")
+            return []

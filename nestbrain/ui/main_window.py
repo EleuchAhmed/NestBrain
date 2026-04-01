@@ -406,140 +406,214 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget {
-                background-color: #0e0f14;
-                color: #ece9ff;
-                font-family: Segoe UI;
+                background-color: #09090b;
+                color: #fafafa;
+                font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 font-size: 13px;
             }
+            QMainWindow::separator {
+                background: #27272a;
+                width: 1px;
+                height: 1px;
+            }
             #Sidebar {
-                background-color: #161822;
-                border-right: 1px solid #232536;
+                background-color: #09090b;
+                border-right: 1px solid #27272a;
             }
             #SidebarTitle {
-                font-size: 30px;
-                font-weight: 700;
-                color: #cdb7ff;
+                font-size: 24px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                color: #fafafa;
+                margin-top: 10px;
             }
             #SidebarSubtitle {
-                color: #9ba0bf;
-                margin-bottom: 10px;
+                color: #a1a1aa;
+                font-size: 11px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin-bottom: 20px;
             }
             #SidebarButton, #SidebarSettingsButton {
-                background-color: #1b1d2a;
-                border: 1px solid #262a3e;
-                border-radius: 10px;
-                min-height: 36px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                min-height: 32px;
                 text-align: left;
-                padding-left: 12px;
+                padding-left: 10px;
+                color: #a1a1aa;
+            }
+            #SidebarButton:hover, #SidebarSettingsButton:hover {
+                background-color: #18181b;
+                color: #fafafa;
             }
             #SidebarButton:checked {
-                background-color: #2a2740;
-                border-color: #6358a6;
+                background-color: #1e1b4b;
+                color: #c4b5fd;
+                border: 1px solid #312e81;
+                font-weight: 600;
             }
             #Headline {
-                font-size: 48px;
+                font-size: 42px;
                 font-weight: 800;
-                line-height: 1.1;
-                color: #e9e1ff;
+                letter-spacing: -1.5px;
+                line-height: 1;
+                color: #fafafa;
             }
             #SubHeadline {
-                font-size: 20px;
-                color: #b8b4cc;
+                font-size: 18px;
+                font-weight: 400;
+                color: #a1a1aa;
+                line-height: 1.4;
             }
             #StartPipelineButton {
-                background-color: #a88bf4;
-                color: #1a1230;
+                background-color: #7c3aed;
+                color: #ffffff;
                 border: none;
-                border-radius: 14px;
-                font-weight: 700;
-                font-size: 18px;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                padding: 0 24px;
+            }
+            #StartPipelineButton:hover {
+                background-color: #8b5cf6;
+            }
+            #StartPipelineButton:pressed {
+                background-color: #6d28d9;
             }
             #StartPipelineButton:disabled {
-                background-color: #5b5678;
-                color: #dad3f7;
+                background-color: #27272a;
+                color: #52525b;
             }
             #FeatureCard {
-                background-color: #141722;
-                border: 1px solid #262a3f;
+                background-color: #09090b;
+                border: 1px solid #27272a;
                 border-radius: 12px;
             }
+            #FeatureCard:hover {
+                border-color: #3f3f46;
+                background-color: #121214;
+            }
             #FeatureCardTitle {
-                font-weight: 700;
-                font-size: 15px;
+                font-weight: 600;
+                font-size: 14px;
+                color: #fafafa;
             }
             #FeatureCardDescription {
-                color: #b9bad1;
+                color: #a1a1aa;
+                font-size: 12px;
             }
             #ZoteroPanel {
-                background-color: #161822;
-                border-left: 1px solid #232536;
+                background-color: #09090b;
+                border-left: 1px solid #27272a;
             }
             #ZoteroHeader {
-                font-size: 20px;
+                font-size: 18px;
                 font-weight: 700;
+                color: #fafafa;
+                letter-spacing: -0.5px;
             }
             #PanelSubLabel {
-                color: #9196b8;
-                font-size: 11px;
+                color: #71717a;
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
                 letter-spacing: 1px;
             }
             #CollectionCard {
-                background-color: #1a1d2b;
-                border: 1px solid #282d42;
-                border-radius: 10px;
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+            }
+            #CollectionCard[selected="true"] {
+                border-color: #7c3aed;
+                background-color: #1e1b4b;
             }
             #CollectionName {
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 600;
+                color: #fafafa;
             }
             #CollectionInfo, #CollectionMeta {
-                color: #9ba0bf;
-                font-size: 12px;
+                color: #a1a1aa;
+                font-size: 11px;
             }
             #SyncChip {
-                background-color: #17192a;
-                border: 1px solid #2a2d45;
-                border-radius: 10px;
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 8px;
             }
             #SyncChipTitle {
-                color: #d8c8ff;
+                color: #c4b5fd;
                 font-size: 11px;
                 font-weight: 700;
             }
             #SyncChipSubtitle {
-                color: #a1a7c8;
+                color: #71717a;
                 font-size: 10px;
             }
-            QLineEdit, QListWidget, QTableWidget {
-                background-color: #161a25;
-                border: 1px solid #2b3147;
-                border-radius: 8px;
+            QLineEdit, QListWidget, QTableWidget, QTreeWidget {
+                background-color: #09090b;
+                border: 1px solid #27272a;
+                border-radius: 6px;
                 padding: 8px;
+                color: #fafafa;
+                selection-background-color: #312e81;
+                selection-color: #c4b5fd;
+            }
+            QLineEdit:focus {
+                border-color: #7c3aed;
             }
             QHeaderView::section {
-                background-color: #191c2a;
-                color: #dcd9ef;
+                background-color: #18181b;
+                color: #a1a1aa;
                 border: none;
-                padding: 6px;
+                border-bottom: 1px solid #27272a;
+                padding: 8px;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
             }
             QProgressBar {
-                border: 1px solid #2f3350;
-                border-radius: 8px;
-                background-color: #141720;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+                background-color: #18181b;
                 text-align: center;
+                height: 8px;
+                color: transparent;
             }
             QProgressBar::chunk {
-                background-color: #ab8df6;
-                border-radius: 7px;
+                background-color: #7c3aed;
+                border-radius: 5px;
             }
             #PanelHeader {
-                font-size: 26px;
+                font-size: 22px;
                 font-weight: 700;
+                color: #fafafa;
+                letter-spacing: -0.5px;
             }
             #NodeDrawer {
-                background-color: #161a25;
-                border: 1px solid #2a2f44;
-                border-radius: 10px;
+                background-color: #18181b;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #09090b;
+                width: 8px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #27272a;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #3f3f46;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
             """
         )

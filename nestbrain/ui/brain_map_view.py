@@ -65,16 +65,17 @@ class BrainMapView(QWidget):
 
     def _draw_empty_state(self) -> None:
         self.axis.clear()
-        self.axis.set_facecolor("#111217")
+        self.axis.set_facecolor("#09090b")
         self.axis.text(
             0.5,
             0.5,
-            "Brain-Map will appear after graph generation",
-            color="#B8B8C7",
+            "Neural Map will appear after pipeline execution",
+            color="#3f3f46",
             ha="center",
             va="center",
             transform=self.axis.transAxes,
-            fontsize=12,
+            fontsize=11,
+            fontweight="500",
         )
         self.axis.set_xticks([])
         self.axis.set_yticks([])
@@ -86,7 +87,7 @@ class BrainMapView(QWidget):
             return
 
         self.axis.clear()
-        self.axis.set_facecolor("#111217")
+        self.axis.set_facecolor("#09090b")
 
         node_colors = []
         node_sizes = []
@@ -94,40 +95,40 @@ class BrainMapView(QWidget):
             data = self.node_data.get(node_id, {})
             node_type = data.get("type", "note")
             if node_id == self.current_focus:
-                node_colors.append("#F7B267")
-                node_sizes.append(270)
+                node_colors.append("#ec4899")
+                node_sizes.append(280)
             elif node_type == "note":
-                node_colors.append("#B08CF0")
-                node_sizes.append(170)
+                node_colors.append("#7c3aed")
+                node_sizes.append(180)
             elif node_type == "reference":
-                node_colors.append("#65C7F7")
-                node_sizes.append(150)
+                node_colors.append("#3b82f6")
+                node_sizes.append(160)
             else:
-                node_colors.append("#F1A56F")
-                node_sizes.append(145)
+                node_colors.append("#f59e0b")
+                node_sizes.append(150)
 
-        nx.draw_networkx_edges(self.graph, self.positions, ax=self.axis, alpha=0.35, width=1.0, edge_color="#A7A1C2")
+        nx.draw_networkx_edges(self.graph, self.positions, ax=self.axis, alpha=0.2, width=0.8, edge_color="#27272a")
         nx.draw_networkx_nodes(
             self.graph,
             self.positions,
             node_color=node_colors,
             node_size=node_sizes,
             ax=self.axis,
-            linewidths=0.7,
-            edgecolors="#1B1E2D",
+            linewidths=1.0,
+            edgecolors="#09090b",
         )
 
         if self.current_focus:
-            sub_nodes = set(self.graph.neighbors(self.current_focus))
-            sub_nodes.add(self.current_focus)
+            sub_nodes = list(self.graph.neighbors(self.current_focus))
+            sub_nodes.append(self.current_focus)
             subgraph = self.graph.subgraph(sub_nodes)
-            nx.draw_networkx_edges(subgraph, self.positions, ax=self.axis, alpha=0.95, width=2.0, edge_color="#C9B5FF")
+            nx.draw_networkx_edges(subgraph, self.positions, ax=self.axis, alpha=0.8, width=1.5, edge_color="#a78bfa")
 
             labels = {
-                node_id: self.node_data.get(node_id, {}).get("label", node_id)[:26]
+                node_id: self.node_data.get(node_id, {}).get("label", node_id)[:24]
                 for node_id in subgraph.nodes
             }
-            nx.draw_networkx_labels(subgraph, self.positions, labels=labels, font_size=8, font_color="#ECE9FF", ax=self.axis)
+            nx.draw_networkx_labels(subgraph, self.positions, labels=labels, font_size=8, font_color="#fafafa", ax=self.axis, font_family="sans-serif")
 
         self.axis.set_xticks([])
         self.axis.set_yticks([])

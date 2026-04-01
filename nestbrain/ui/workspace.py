@@ -31,15 +31,19 @@ class FeatureCard(QFrame):
     def __init__(self, title: str, description: str, icon: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("FeatureCard")
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(120)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(8)
 
         icon_label = QLabel(icon)
         icon_label.setObjectName("FeatureCardIcon")
+        icon_label.setStyleSheet("font-size: 20px; color: #7c3aed; font-weight: 700;")
+        
         title_label = QLabel(title)
         title_label.setObjectName("FeatureCardTitle")
+        
         desc_label = QLabel(description)
         desc_label.setObjectName("FeatureCardDescription")
         desc_label.setWordWrap(True)
@@ -113,9 +117,9 @@ class Workspace(QWidget):
 
         cards_row = QHBoxLayout()
         cards_row.setSpacing(12)
-        cards_row.addWidget(FeatureCard("AI Synthesis", "Auto-categorize and summarize information nodes.", "✦"))
-        cards_row.addWidget(FeatureCard("Semantic Linking", "Discover hidden relationships between notes.", "✤"))
-        cards_row.addWidget(FeatureCard("3D Graphing", "Explore your neural network in interactive 3D.", "◉"))
+        cards_row.addWidget(FeatureCard("Neural Synthesis", "Auto-distill your research into connected knowledge.", "◈"))
+        cards_row.addWidget(FeatureCard("Obsidian Bridge", "Seamless sync with your existing notes.", "⟡"))
+        cards_row.addWidget(FeatureCard("Brain Map", "Explore relationships in interactive space.", "⊕"))
 
         layout.addWidget(headline)
         layout.addWidget(subtitle)

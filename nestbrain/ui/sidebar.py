@@ -31,10 +31,10 @@ class Sidebar(QWidget):
         self.setMaximumWidth(240)
 
         self.nav_items: list[NavItem] = [
-            NavItem("brain_map", "Brain-Map", "◉"),
-            NavItem("archive", "Archive", "🗃"),
-            NavItem("obsidian_notes", "Obsidian Notes", "🗎"),
-            NavItem("zotero_sync", "Zotero Sync", "📚"),
+            NavItem("brain_map", "Brain-Map", "⊙"),
+            NavItem("archive", "Archive", "⊞"),
+            NavItem("obsidian_notes", "Notes", "≡"),
+            NavItem("zotero_sync", "Zotero", "♽"),
         ]
 
         root_layout = QVBoxLayout(self)

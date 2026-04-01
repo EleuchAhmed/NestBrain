@@ -116,20 +116,20 @@ class CollectionItemWidget(QFrame):
 
         self.setObjectName("CollectionCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(4)
 
         top = QHBoxLayout()
-        name_label = QLabel(f"📁  {collection.name}")
+        name_label = QLabel(f"{collection.name}")
         name_label.setObjectName("CollectionName")
         self.dot = QLabel("●")
 
         top.addWidget(name_label, 1)
         top.addWidget(self.dot)
 
-        info = QLabel(f"{collection.item_count} items synced")
+        info = QLabel(f"{collection.item_count} items")
         info.setObjectName("CollectionInfo")
-        meta = QLabel(f"Modified {collection.modified}")
+        meta = QLabel(f"Updated {collection.modified}")
         meta.setObjectName("CollectionMeta")
 
         layout.addLayout(top)
@@ -145,11 +145,11 @@ class CollectionItemWidget(QFrame):
 
     def set_status(self, status: str) -> None:
         if status.lower() == "syncing":
-            self.dot.setStyleSheet("color: #ff9f6b;")
+            self.dot.setStyleSheet("color: #7c3aed;")
             if not self._blink_timer.isActive():
                 self._blink_timer.start()
         else:
-            self.dot.setStyleSheet("color: #c8afff;")
+            self.dot.setStyleSheet("color: #3f3f46;")
             self.dot.setVisible(True)
             self._blink_timer.stop()
 
