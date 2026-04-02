@@ -88,7 +88,7 @@ class SettingsDialog(QDialog):
         return replace(
             self._config,
             vault_path=self.vault_input.text().strip(),
-            ollama_model=self.ollama_model_input.text().strip() or "deepseek-ai/deepseek-v3-1",
+            ollama_model=self.ollama_model_input.text().strip() or "deepseek-ai/deepseek-r1",
             zotero_library_id=self.zotero_id_input.text().strip(),
             zotero_api_key=self.zotero_api_key_input.text().strip(),
             ollama_host=self.ollama_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",

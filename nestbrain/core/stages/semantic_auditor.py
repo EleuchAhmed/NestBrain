@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Tuple, Dict, Any
 from pathlib import Path
 from ..nvidia_client import nvidia_client
@@ -11,11 +12,19 @@ class SemanticAuditor:
     filter out low-relevance "false positive" connections.
     """
     
-    MODEL = "nvidia/rerank-qa-mistral-4b"
+    MODEL = "nvidia/nv-rerankqa-mistral-4b-v3"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
         self.client = nvidia_client
+
+    def _sanitize_filename(self, title: str) -> str:
+        """Sanitize title to safe filename (prevent path traversal)."""
+        # Remove path separators and unsafe characters
+        safe = re.sub(r"[/\\:*?\"<>|]", "-", title)
+        # Replace multiple dashes with single dash
+        safe = re.sub(r"-+", "-", safe)
+        return safe.strip("-")
 
     def audit_connections(self, new_note_content: str, semantic_matches: List[Tuple[str, float]], threshold_logit: float = 0.0) -> List[str]:
         """
@@ -34,7 +43,8 @@ class SemanticAuditor:
         for idx, (title, score) in enumerate(semantic_matches):
             try:
                 # Read passage from the vault (limit length to prevent overflowing reranker)
-                note_file = self.vault_path / f"{title}.md"
+                safe_title = self._sanitize_filename(title)
+                note_file = self.vault_path / f"{safe_title}.md"
                 if not note_file.exists():
                     continue
 
@@ -66,9 +76,9 @@ class SemanticAuditor:
                 logit = item.get("logit", -100)
                 
                 if logit >= threshold_logit:
-                    title = mapping.get(original_idx)
-                    if title:
-                        survivors.append(title)
+                    original_title = mapping.get(original_idx)
+                    if original_title:
+                        survivors.append(original_title)
                 else:
                     logger.debug(f"Connection {mapping.get(original_idx)} rejected by Auditor (logit {logit}).")
 

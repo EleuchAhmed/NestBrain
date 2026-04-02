@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from ..nvidia_client import nvidia_client
 
@@ -10,8 +11,8 @@ class NoteSeeder:
     and patching existing notes (The Surgeon - glm-4.7).
     """
 
-    MODEL_SEEDER = "devstral-2-123b-instruct-2512"
-    MODEL_SURGEON = "THUDM/glm-4.7"
+    MODEL_SEEDER = "mistralai/devstral-2-123b-instruct-2512"
+    MODEL_SURGEON = "deepseek-ai/deepseek-r1"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
@@ -19,8 +20,11 @@ class NoteSeeder:
 
     def _get_note_path(self, term: str) -> Path:
         """Helper to get a safe Markdown path for an entity term."""
-        # Minimal sanitization for Windows/Unix
-        safe_term = term.replace(":", " -").replace("/", "-").replace("\\", "-")
+        # Sanitize filename to prevent path traversal and invalid characters
+        safe_term = re.sub(r"[/\\:*?\"<>|]", "-", term)
+        # Replace multiple dashes with single dash
+        safe_term = re.sub(r"-+", "-", safe_term)
+        safe_term = safe_term.strip("-")
         return self.vault_path / f"{safe_term}.md"
 
     def process_extracted_term(self, term: str, master_note_context: str, subject_title: str) -> bool:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any
@@ -21,12 +22,15 @@ class SynthesisResult:
 
 def slugify(text: str) -> str:
     """Convert text to URL-safe slug."""
-    return (text
-        .lower()
-        .replace("[^a-z0-9- ]", "")
-        .replace(" +", "-")
-        .replace("-+", "-")
-        .strip("-"))
+    # First convert to lowercase and remove non-alphanumeric/space characters
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\- ]", "", text)
+    # Replace multiple spaces with single hyphen
+    text = re.sub(r" +", "-", text)
+    # Replace multiple hyphens with single hyphen
+    text = re.sub(r"-+", "-", text)
+    # Strip leading/trailing hyphens
+    return text.strip("-")
 
 
 def classify_domain(collection_name: str) -> str:

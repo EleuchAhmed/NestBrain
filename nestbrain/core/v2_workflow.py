@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import asdict
 from pathlib import Path
@@ -109,17 +108,28 @@ class PipelineWorkflowV2:
             if not self.notebooklm:
                 self.notebooklm = NotebookLMBridge(self.app_root)
             
+            # Ensure registry entry exists
+            self.registry.get_or_create(collection.key, collection.name)
+            
             # NotebookLM Setup
             notebook_id = self.registry.get_notebook_id(collection.key)
             if not notebook_id:
+                self._emit(status_callback, f"Creating NotebookLM notebook for {collection.name}")
                 notebook_id = await self.notebooklm.create_notebook(collection.name)
                 self.registry.set_notebook_id(collection.key, notebook_id)
+                self.registry.save()
+                
                 # Ingestion logic
+                self._emit(status_callback, f"Ingesting {len(collection.items)} sources into NotebookLM")
                 for item in collection.items:
-                    # In v1 this is done with `ingest_sources` which is complex, simplified here
-                    # For production we'd re-use the exact ingest_sources logic from staging
-                    pass 
-
+                    # Combine title and abstract as text source
+                    source_content = f"Title: {item.title}\n\nAbstract: {item.abstract}"
+                    if item.url:
+                        source_content += f"\n\nURL: {item.url}"
+                    
+                    await self.notebooklm.ingest_text(notebook_id, item.title or "Untitled Source", source_content)
+                
+                self.registry.save()
             # LAYER 1: Research & Synthesis
             self._emit(status_callback, f"L1: Planning Research for {collection.name}")
             
@@ -160,6 +170,10 @@ class PipelineWorkflowV2:
             
             self._emit(status_callback, "L3: Cross-annotating Graph")
             self.annotator.annotate_connections(collection.name, master_note_content, survivors)
+            
+            # Update registry with note path and save
+            self.registry.set_obsidian_path(collection.key, str(note_path))
+            self.registry.save()
 
             return {"success": True, "note_path": str(note_path)}
 

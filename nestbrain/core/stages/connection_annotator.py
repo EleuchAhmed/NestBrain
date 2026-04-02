@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List
 from pathlib import Path
 from ..nvidia_client import nvidia_client
@@ -12,11 +13,19 @@ class ConnectionAnnotator:
     appending it to the notes.
     """
     
-    MODEL = "deepseek-ai/deepseek-v3.1"
+    MODEL = "deepseek-ai/deepseek-r1"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
         self.client = nvidia_client
+
+    def _sanitize_filename(self, title: str) -> str:
+        """Sanitize title to safe filename (prevent path traversal)."""
+        # Remove path separators and unsafe characters
+        safe = re.sub(r"[/\\:*?\"<>|]", "-", title)
+        # Replace multiple dashes with single dash
+        safe = re.sub(r"-+", "-", safe)
+        return safe.strip("-")
 
     def annotate_connections(self, new_note_title: str, new_note_content: str, target_notes: List[str]):
         """
@@ -32,7 +41,8 @@ class ConnectionAnnotator:
 
         for title in target_notes:
             try:
-                target_file = self.vault_path / f"{title}.md"
+                safe_title = self._sanitize_filename(title)
+                target_file = self.vault_path / f"{safe_title}.md"
                 if not target_file.exists():
                     continue
 

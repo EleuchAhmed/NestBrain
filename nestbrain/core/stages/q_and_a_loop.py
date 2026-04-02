@@ -12,7 +12,7 @@ class QAndALoop:
     identifies if follow-up questions are needed.
     """
     
-    MODEL = "devstral-2-123b-instruct-2512"
+    MODEL = "mistralai/devstral-2-123b-instruct-2512"
 
     def __init__(self, nlm_bridge: NotebookLMBridge):
         self.nlm = nlm_bridge

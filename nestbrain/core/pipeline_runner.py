@@ -21,7 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "zotero_library_id": "",
     "zotero_api_key": "",
     "selected_collection_key": "",
-    "ollama_model": "deepseek-ai/deepseek-v3.1",
+    "ollama_model": "deepseek-ai/deepseek-r1",
     "ollama_host": "https://integrate.api.nvidia.com/v1",
     "zotero_host": "http://localhost:23119",
     "theme": "dark",
@@ -110,11 +110,11 @@ class PipelineRunner:
             status_callback=status_callback,
         )
         
-        # Build knowledge graph
+        # Build knowledge graph from workflow results
         self._emit(status_callback, "Building knowledge graph")
         graph_payload = graph_builder.build(
-            [], 
-            [],
+            notes=workflow_result.get("notes", []),
+            collections=workflow_result.get("collections", []),
             semantic_links=workflow_result.get("semantic_links", [])
         )
         

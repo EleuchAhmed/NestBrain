@@ -10,7 +10,7 @@ class QuestionPlanner:
     Generates an exhaustive research taxonomy for the input subject.
     """
     
-    MODEL = "deepseek-ai/deepseek-v3.2"
+    MODEL = "deepseek-ai/deepseek-r1"
 
     def __init__(self):
         # Fallback to a valid DeepSeek model identifier for NVIDIA NIM if v3.2 isn't strictly named this

@@ -4,7 +4,10 @@ import json
 import os
 from typing import Any
 
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
 
 
 class OllamaClientError(Exception):
@@ -12,17 +15,25 @@ class OllamaClientError(Exception):
 
 
 class OllamaClient:
-    """HTTP client wrapper for NVIDIA NIM API (DeepSeek V3.1)."""
+    """HTTP client wrapper for NVIDIA NIM API.
+    
+    NOTE: Despite the class name, this client communicates exclusively with 
+    NVIDIA NIM (https://integrate.api.nvidia.com/v1), not a local Ollama server.
+    The name is Legacy but maintained for backward compatibility.
+    """
 
-    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-v3.1", timeout: int = 90) -> None:
+    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-r1", timeout: int = 90) -> None:
         self.host = host.rstrip("/")
         self.model = model
         self.timeout = timeout
         
         # Ensure the client uses OpenAI-compatible SDK format with Bearer token
+        api_key = os.getenv("NVIDIA_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("NVIDIA_API_KEY environment variable is not set. Add it to your .env file.")
         self.client = OpenAI(
             base_url=self.host,
-            api_key=os.environ["NVIDIA_API_KEY"]
+            api_key=api_key
         )
 
     def generate(self, prompt: str, model: str | None = None) -> str:

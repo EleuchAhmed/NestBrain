@@ -6,7 +6,6 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 
 @dataclass(slots=True)
@@ -37,11 +36,15 @@ class PipelineRegistry:
         
         try:
             raw = json.loads(self.registry_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raise ValueError("Registry must be a JSON object")
             self.data = {
                 key: CollectionRegistryEntry(**value)
                 for key, value in raw.items()
             }
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            # Log corruption but continue with empty registry
+            print(f"Warning: Registry file corrupted, resetting. Error: {e}")
             self.data = {}
 
     def save(self) -> None:
@@ -74,12 +77,14 @@ class PipelineRegistry:
 
     def get_notebook_id(self, collection_key: str) -> str:
         """Get cached notebook ID for this collection."""
-        return self.data.get(collection_key, CollectionRegistryEntry("")).notebook_id
+        entry = self.data.get(collection_key)
+        return entry.notebook_id if entry else ""
 
     def set_notebook_id(self, collection_key: str, notebook_id: str) -> None:
         """Cache notebook ID for this collection."""
-        if collection_key in self.data:
-            self.data[collection_key].notebook_id = notebook_id
+        if collection_key not in self.data:
+            self.data[collection_key] = CollectionRegistryEntry(name="Unknown")
+        self.data[collection_key].notebook_id = notebook_id
 
     def set_obsidian_path(self, collection_key: str, path: str) -> None:
         """Cache Obsidian note path for this collection."""

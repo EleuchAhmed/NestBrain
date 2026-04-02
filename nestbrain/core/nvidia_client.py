@@ -5,6 +5,9 @@ from typing import Dict, Any, List, Optional
 import urllib.request
 import urllib.error
 
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 class NvidiaNIMClient:
@@ -18,7 +21,7 @@ class NvidiaNIMClient:
             logger.warning("NVIDIA_API_KEY is not set. API calls will fail.")
 
     def generate_chat_completion(self, model: str, messages: List[Dict[str, str]], 
-                                 temperature: float = 0.7, max_tokens: int = 1024,
+                                 temperature: float = 0.7, max_tokens: int = 4096,
                                  response_format: Optional[Dict[str, str]] = None) -> str:
         """Execute a chat completion request against a NIM model."""
         url = f"{self.BASE_URL}/chat/completions"

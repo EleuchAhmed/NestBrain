@@ -10,7 +10,7 @@ class MasterSynthesizer:
     with headers and Obsidian formatting.
     """
     
-    MODEL = "deepseek-ai/deepseek-v3.2"
+    MODEL = "deepseek-ai/deepseek-r1"
 
     def __init__(self):
         self.client = nvidia_client
