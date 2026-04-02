@@ -2,12 +2,35 @@
   "EJWZ2YDM": {
     "name": "LLM-FineTuning",
     "notebook_id": "fccaed47-d2cb-4b45-a8cb-67821c39f2da",
-    "obsidian_path": "C:\\Users\\Mega Pc\\Desktop\\tech knowledge\\LLM-FineTuning.md",
+    "obsidian_path": "20_Concepts\\Systems Design\\llm-finetuning.md",
     "processed_sources": [
       "2TEU3LTU",
-      "CS9WSHBK"
+      "5P7US64F",
+      "C7N7QUUR",
+      "CS9WSHBK",
+      "IVBWCA3M",
+      "LTTNNNXD"
     ],
     "media_paths": {},
-    "last_updated": "2026-04-01T14:55:41.106943"
+    "last_updated": "2026-04-02T11:31:45.060006"
+  },
+  "2PJPHXSQ": {
+    "name": "Ai-Agents",
+    "notebook_id": "a67c7c8f-5f6e-49f5-beab-f385fbf9bdf4",
+    "obsidian_path": "",
+    "processed_sources": [
+      "7C7888FN",
+      "TVUA3Q84"
+    ],
+    "media_paths": {},
+    "last_updated": "2026-04-02T12:31:37.459407"
+  },
+  "6W96EP2Z": {
+    "name": "Desktop app dev",
+    "notebook_id": "e83c7a70-02fd-417f-bcd1-c50552b49452",
+    "obsidian_path": "",
+    "processed_sources": [],
+    "media_paths": {},
+    "last_updated": ""
   }
 }

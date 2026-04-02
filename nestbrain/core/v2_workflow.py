@@ -142,15 +142,18 @@ class PipelineWorkflowV2:
             if new_items:
                 self._emit(status_callback, f"Ingesting {len(new_items)} new sources into NotebookLM")
                 successful_keys: list[str] = []
-                for item in new_items:
+                for idx, item in enumerate(new_items):
+                    print(f"DEBUG:V2:INGEST_ITEM_{idx} - Processing item {idx+1}/{len(new_items)}: {item.title[:50]}")
                     source_content = f"Title: {item.title}\n\nAbstract: {item.abstract}"
                     if item.url:
                         source_content += f"\n\nURL: {item.url}"
+                    print(f"DEBUG:V2:INGEST_CALLING_{idx} - About to call ingest_text")
                     ingested = await self.notebooklm.ingest_text(
                         notebook_id,
                         item.title or "Untitled Source",
                         source_content,
                     )
+                    print(f"DEBUG:V2:INGEST_COMPLETE_{idx} - ingest_text returned {ingested}")
                     if ingested:
                         successful_keys.append(item.key)
                 if successful_keys:
@@ -167,8 +170,16 @@ class PipelineWorkflowV2:
             self._emit(status_callback, f"L1: Planning Research for {collection.name}")
             
             # 1. Question Planner (Architect)
+            print(f"DEBUG:V2:CONTEXT_BUILDING - Building context summary from {len(new_items or all_items) or 0} items")
             context_summary = self._build_context_summary(new_items or all_items)
-            taxonomy = self.planner.generate_taxonomy(collection.name, context_summary)
+            print(f"DEBUG:V2:CALLING_PLANNER - About to call question_planner.generate_taxonomy")
+            # Run the synchronous CPU/IO-bound function in a thread pool to avoid blocking the async event loop
+            loop = asyncio.get_event_loop()
+            taxonomy = await loop.run_in_executor(
+                None,
+                lambda: self.planner.generate_taxonomy(collection.name, context_summary)
+            )
+            print(f"DEBUG:V2:PLANNER_RETURNED - Received {len(taxonomy)} taxonomy questions")
             if self.planner.used_fallback:
                 msg = f"Question planner fallback used for {collection.name}: {self.planner.last_error}"
                 warnings.append(msg)
@@ -176,8 +187,11 @@ class PipelineWorkflowV2:
             
             # 2. Q&A Loop (Researcher)
             self._emit(status_callback, f"L1: Iterative Q&A loops ({len(taxonomy)} paths)")
+            print(f"DEBUG:V2:CREATING_QA_LOOP - Creating QAndALoop instance")
             qa_loop = QAndALoop(self.notebooklm)
+            print(f"DEBUG:V2:CALLING_QA_LOOP - About to call execute_research with {len(taxonomy)} questions")
             qa_history = await qa_loop.execute_research(notebook_id, taxonomy)
+            print(f"DEBUG:V2:QA_LOOP_RETURNED - Received {len(qa_history)} Q&A history entries")
             
             # 3. Master Synthesis (Author)
             self._emit(status_callback, "L1: Synthesizing Master Note")

@@ -1,12 +1,16 @@
 import os
 import json
 import logging
+import socket
 from typing import Dict, Any, List, Optional
 import urllib.request
 import urllib.error
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# Set default socket timeout to avoid indefinite hangs
+socket.setdefaulttimeout(120)
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +19,9 @@ class NvidiaNIMClient:
     
     BASE_URL = "https://integrate.api.nvidia.com/v1"
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, timeout_seconds: int = 120):
         self.api_key = api_key or os.getenv("NVIDIA_API_KEY")
+        self.timeout_seconds = timeout_seconds
         if not self.api_key:
             logger.warning("NVIDIA_API_KEY is not set. API calls will fail.")
 
@@ -28,7 +33,9 @@ class NvidiaNIMClient:
                                  temperature: float = 0.7, max_tokens: int = 4096,
                                  response_format: Optional[Dict[str, str]] = None) -> str:
         """Execute a chat completion request against a NIM model."""
+        print(f"DEBUG:NVIDIA:CHAT_START - model={model}, max_tokens={max_tokens}, timeout={self.timeout_seconds}s")
         url = f"{self.BASE_URL}/chat/completions"
+        print(f"DEBUG:NVIDIA:URL - {url}")
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -48,16 +55,25 @@ class NvidiaNIMClient:
             payload["response_format"] = response_format
 
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+        print(f"DEBUG:NVIDIA:REQUEST_BUILT - About to call urlopen with timeout={self.timeout_seconds}s")
+        print(f"DEBUG:NVIDIA:PAYLOAD_SIZE - {len(json.dumps(payload))} bytes")
+        print(f"DEBUG:NVIDIA:MSG_COUNT - {len(messages)} messages")
+        print(f"DEBUG:NVIDIA:FIRST_MSG - {str(messages[0])[:200] if messages else 'NO MESSAGES'}")
         
         try:
-            with urllib.request.urlopen(req) as response:
+            print(f"DEBUG:NVIDIA:URLOPEN_START - Calling urllib.request.urlopen")
+            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
+                print(f"DEBUG:NVIDIA:RESPONSE_OK - Got response, reading content")
                 result = json.loads(response.read().decode('utf-8'))
+                print(f"DEBUG:NVIDIA:PARSE_OK - Parsed JSON response, extracting content")
                 return result['choices'][0]['message']['content']
         except urllib.error.HTTPError as e:
             error_body = e.read().decode('utf-8')
+            print(f"DEBUG:NVIDIA:HTTP_ERROR - {e.code}: {error_body[:100]}")
             logger.error(f"NVIDIA API Error ({e.code}): {error_body}")
             raise Exception(f"NVIDIA API call failed: {error_body}")
         except Exception as e:
+            print(f"DEBUG:NVIDIA:EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
             logger.error(f"Failed to connect to NVIDIA NIM: {e}")
             raise
 
@@ -82,7 +98,7 @@ class NvidiaNIMClient:
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 return [item['embedding'] for item in result['data']]
         except urllib.error.HTTPError as e:
@@ -112,7 +128,7 @@ class NvidiaNIMClient:
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 # Result typically contains a "rankings" array of objects with "index" and "logit"
                 return result.get('rankings', [])

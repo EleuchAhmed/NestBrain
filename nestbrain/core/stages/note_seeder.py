@@ -13,7 +13,7 @@ class NoteSeeder:
     """
 
     MODEL_SEEDER = "mistralai/devstral-2-123b-instruct-2512"
-    MODEL_SURGEON = "deepseek-ai/deepseek-r1"
+    MODEL_SURGEON = "deepseek-ai/deepseek-v3.2"
 
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)

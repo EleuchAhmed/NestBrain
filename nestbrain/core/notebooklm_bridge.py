@@ -14,6 +14,8 @@ from notebooklm.rpc import AudioFormat, AudioLength, VideoFormat, VideoStyle
 class NotebookLMBridge:
     """Async client interacting with NotebookLM natively."""
 
+    ASK_TIMEOUT_SECONDS = 90.0
+
     def __init__(self, app_root: str | Path):
         self.app_root = Path(app_root).resolve()
 
@@ -43,11 +45,16 @@ class NotebookLMBridge:
 
     async def ingest_text(self, notebook_id: str, title: str, content: str) -> bool:
         try:
+            print(f"DEBUG:NLM_BRIDGE:INGEST_TEXT_START - Ingesting text: {title[:50]}")
             tokens = await get_auth_tokens()
+            print(f"DEBUG:NLM_BRIDGE:INGEST_TOKENS_OK - Got tokens")
             async with NotebookLMClient(tokens) as client:
+                print(f"DEBUG:NLM_BRIDGE:INGEST_CLIENT_OPEN - About to add_text with wait=True")
                 await client.sources.add_text(notebook_id=notebook_id, title=title, content=content, wait=True)
+                print(f"DEBUG:NLM_BRIDGE:INGEST_TEXT_COMPLETE - Successfully ingested")
                 return True
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG:NLM_BRIDGE:INGEST_EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
             return False
 
     async def interrogate(self, notebook_id: str, queries: list[str]) -> list[str]:
@@ -57,7 +64,10 @@ class NotebookLMBridge:
             async with NotebookLMClient(tokens) as client:
                 for query in queries:
                     try:
-                        res = await client.chat.ask(notebook_id=notebook_id, question=query)
+                        res = await asyncio.wait_for(
+                            client.chat.ask(notebook_id=notebook_id, question=query),
+                            timeout=self.ASK_TIMEOUT_SECONDS,
+                        )
                         responses.append(f"### Query: {query}\n\n{res.answer}")
                     except Exception as e:
                         responses.append(f"### Query: {query}\n\nWarning: {str(e)}")
@@ -68,11 +78,19 @@ class NotebookLMBridge:
 
     async def synthesize(self, notebook_id: str, query: str) -> str:
         try:
+            print(f"DEBUG:NLM_BRIDGE:SYNTHESIZE_START - Getting tokens for notebook {notebook_id}")
             tokens = await get_auth_tokens()
+            print(f"DEBUG:NLM_BRIDGE:TOKENS_COMPLETE - Creating NotebookLM client")
             async with NotebookLMClient(tokens) as client:
-                res = await client.chat.ask(notebook_id=notebook_id, question=query)
+                print(f"DEBUG:NLM_BRIDGE:CLIENT_OPEN - Calling chat.ask with query: {query[:80]}")
+                res = await asyncio.wait_for(
+                    client.chat.ask(notebook_id=notebook_id, question=query),
+                    timeout=self.ASK_TIMEOUT_SECONDS,
+                )
+                print(f"DEBUG:NLM_BRIDGE:ASK_COMPLETE - Received answer of {len(res.answer)} chars")
                 return res.answer
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG:NLM_BRIDGE:EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
             return ""
 
     async def generate_media(self, notebook_id: str, media_type: str) -> dict[str, Any]:

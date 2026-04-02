@@ -10,7 +10,7 @@ class MasterSynthesizer:
     with headers and Obsidian formatting.
     """
     
-    MODEL = "deepseek-ai/deepseek-r1"
+    MODEL = "deepseek-ai/deepseek-v3.2"
     REQUIRED_SECTIONS = [
         "## Executive Summary",
         "## Core Concepts",

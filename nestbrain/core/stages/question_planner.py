@@ -11,7 +11,7 @@ class QuestionPlanner:
     Generates an exhaustive research taxonomy for the input subject.
     """
     
-    MODEL = "deepseek-ai/deepseek-r1"
+    MODEL = "deepseek-ai/deepseek-v3.2"
 
     def __init__(self):
         # Fallback to a valid DeepSeek model identifier for NVIDIA NIM if v3.2 isn't strictly named this
@@ -26,6 +26,7 @@ class QuestionPlanner:
         Takes a subject and generates a list of essential questions covering:
         what, why, how, when, tradeoffs, limitations, dependencies, history.
         """
+        print(f"DEBUG:PLANNER:START - Generating research taxonomy for subject: {subject}")
         logger.info(f"Generating research taxonomy for subject: {subject}")
         
         system_prompt = (
@@ -52,11 +53,13 @@ class QuestionPlanner:
 
         try:
             # We enforce a JSON array response using the prompt
+            print(f"DEBUG:PLANNER:NVIDIA_REQUEST_START - About to call NVIDIA API with model {self.MODEL}")
             response_text = self.client.generate_chat_completion(
                 model=self.MODEL,
                 messages=messages,
                 temperature=0.3
             )
+            print(f"DEBUG:PLANNER:NVIDIA_REQUEST_COMPLETE - Received response of {len(response_text)} chars")
             
             # Clean up potential markdown formatting from the response
             cleaned_text = response_text.strip()
@@ -69,6 +72,7 @@ class QuestionPlanner:
             
             if not isinstance(taxonomy, list):
                 raise ValueError("Response was not a JSON list of strings.")
+            print(f"DEBUG:PLANNER:COMPLETE - Successfully generated {len(taxonomy)} taxonomy questions")
             self.used_fallback = False
             self.last_error = ""
                 
@@ -76,6 +80,7 @@ class QuestionPlanner:
 
         except Exception as e:
             logger.error(f"Failed to generate taxonomy: {e}")
+            print(f"DEBUG:PLANNER:FALLBACK - Using fallback taxonomy due to error: {str(e)[:100]}")
             self.used_fallback = True
             self.last_error = str(e)
             return self._build_fallback_taxonomy(subject, context_summary)
