@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import List, Dict, Any
 from ..nvidia_client import nvidia_client
 
@@ -17,6 +18,8 @@ class QuestionPlanner:
         # e.g. deepseek-ai/deepseek-coder-33b-instruct, etc.
         # Assuming deepseek-v3.2 as per user mapping
         self.client = nvidia_client
+        self.used_fallback = False
+        self.last_error = ""
 
     def generate_taxonomy(self, subject: str, context_summary: str = "") -> List[str]:
         """
@@ -66,15 +69,40 @@ class QuestionPlanner:
             
             if not isinstance(taxonomy, list):
                 raise ValueError("Response was not a JSON list of strings.")
+            self.used_fallback = False
+            self.last_error = ""
                 
             return taxonomy
 
         except Exception as e:
             logger.error(f"Failed to generate taxonomy: {e}")
-            # Fallback taxonomy
-            return [
-                f"What is {subject}?",
-                f"Why is {subject} important?",
-                f"How does {subject} work at a technical level?",
-                f"What are the limitations and tradeoffs of {subject}?"
-            ]
+            self.used_fallback = True
+            self.last_error = str(e)
+            return self._build_fallback_taxonomy(subject, context_summary)
+
+    def _build_fallback_taxonomy(self, subject: str, context_summary: str) -> List[str]:
+        """Build deterministic but richer questions when model-based planning fails."""
+        normalized = re.sub(r"[^A-Za-z0-9 ]+", " ", subject).strip()
+        tokens = [token for token in normalized.split() if len(token) > 2]
+        focus_terms = tokens[:2]
+
+        base_questions = [
+            f"What problem does {subject} solve and why does it matter?",
+            f"How does {subject} work end to end in practice?",
+            f"What architectural components are required to implement {subject}?",
+            f"What tradeoffs, risks, and failure modes are common with {subject}?",
+            f"How should {subject} be evaluated, benchmarked, or validated?",
+            f"When should teams avoid {subject} and choose an alternative approach?",
+        ]
+
+        if focus_terms:
+            base_questions.append(
+                f"How do {focus_terms[0]} and {focus_terms[-1]} interact within {subject}?"
+            )
+
+        if context_summary.strip():
+            base_questions.append(
+                f"Which details from the provided sources most strongly influence decisions about {subject}?"
+            )
+
+        return base_questions

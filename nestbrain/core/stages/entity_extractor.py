@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import List
 from ..nvidia_client import nvidia_client
 
@@ -14,6 +15,8 @@ class EntityExtractor:
 
     def __init__(self):
         self.client = nvidia_client
+        self.used_fallback = False
+        self.last_error = ""
 
     def extract_entities(self, master_note: str) -> List[str]:
         """
@@ -57,8 +60,48 @@ class EntityExtractor:
                 raise ValueError("Response was not a JSON list of strings.")
                 
             logger.info(f"Extracted {len(entities)} distinct entities.")
+            self.used_fallback = False
+            self.last_error = ""
             return [str(e).strip() for e in entities if e]
 
         except Exception as e:
             logger.error(f"Failed to extract entities: {e}")
-            return []
+            self.used_fallback = True
+            self.last_error = str(e)
+            return self._extract_entities_heuristic(master_note)
+
+    def _extract_entities_heuristic(self, master_note: str) -> List[str]:
+        """Fallback extraction from wikilinks, acronyms, and title-cased phrases."""
+        candidates: list[str] = []
+
+        for link in re.findall(r"\[\[([^\]|#]+)", master_note):
+            value = link.strip()
+            if value:
+                candidates.append(value)
+
+        for acronym in re.findall(r"\b[A-Z]{2,8}\b", master_note):
+            candidates.append(acronym.strip())
+
+        for phrase in re.findall(r"\b(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b", master_note):
+            cleaned = phrase.strip()
+            if len(cleaned) > 3:
+                candidates.append(cleaned)
+
+        filtered: list[str] = []
+        seen: set[str] = set()
+        for entity in candidates:
+            entity = re.sub(r"\s+", " ", entity).strip(" -")
+            if len(entity) < 3:
+                continue
+            if entity.lower() in {"the", "and", "for", "with", "from", "core findings"}:
+                continue
+            key = entity.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            filtered.append(entity)
+            if len(filtered) >= 30:
+                break
+
+        logger.info(f"Heuristic extractor returned {len(filtered)} entities.")
+        return filtered

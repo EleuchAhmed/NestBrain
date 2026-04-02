@@ -20,6 +20,10 @@ class NvidiaNIMClient:
         if not self.api_key:
             logger.warning("NVIDIA_API_KEY is not set. API calls will fail.")
 
+    def is_configured(self) -> bool:
+        """Return True when NVIDIA credentials are available."""
+        return bool(self.api_key and self.api_key.strip())
+
     def generate_chat_completion(self, model: str, messages: List[Dict[str, str]], 
                                  temperature: float = 0.7, max_tokens: int = 4096,
                                  response_format: Optional[Dict[str, str]] = None) -> str:

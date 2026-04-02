@@ -34,17 +34,31 @@ def slugify(text: str) -> str:
 
 
 def classify_domain(collection_name: str) -> str:
-    """Classify collection into a domain folder."""
+    """Classify text into concept taxonomy folders used in the vault."""
     lower = collection_name.lower()
-    
-    if any(x in lower for x in ["llm", "ai", "ml", "data", "deep", "fine", "agent"]):
-        return "AI-Data"
-    if any(x in lower for x in ["cyber", "security", "pentest"]):
-        return "Cyber"
-    if any(x in lower for x in ["full", "web", "react", "node"]):
-        return "Fullstack"
-    
-    return "General-Arch"
+
+    if any(x in lower for x in ["agent", "autonomy", "multi-agent", "tool use", "planner", "reasoning"]):
+        return "Agents & Autonomy"
+    if any(x in lower for x in ["data", "etl", "pipeline", "warehouse", "lakehouse", "mlops", "feature store", "dbt", "airflow"]):
+        return "Data Engineering & MLOps"
+    if any(x in lower for x in ["frontend", "ui", "ux", "react", "vue", "angular", "css", "html", "javascript"]):
+        return "Frontend & UI"
+    if any(x in lower for x in ["backend", "api", "microservice", "rest", "graphql", "fastapi", "django", "flask", "node", "express"]):
+        return "Backend & API"
+    if any(x in lower for x in ["network security", "firewall", "ids", "ips", "vpn", "network protocol", "zero trust"]):
+        return "Network Security"
+    if any(x in lower for x in ["appsec", "owasp", "sast", "dast", "xss", "sql injection", "csrf", "secure coding"]):
+        return "AppSec"
+    if any(x in lower for x in ["cryptography", "encryption", "cipher", "hash", "signature", "pki", "rsa", "ecc", "aes"]):
+        return "Cryptography"
+    if any(x in lower for x in ["web security", "browser security", "cookie", "cors", "csp", "session hijack"]):
+        return "web security"
+    if any(x in lower for x in ["aws", "azure", "gcp", "cloud provider", "cloudformation", "iam", "cloud run"]):
+        return "Cloud Providers"
+    if any(x in lower for x in ["devops", "ci", "cd", "docker", "kubernetes", "helm", "terraform", "ansible", "github actions", "gitlab"]):
+        return "DevOps & CI-CD"
+
+    return "Systems Design"
 
 
 def build_sources_table(items: list[dict[str, Any]]) -> str:

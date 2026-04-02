@@ -2,6 +2,7 @@ import logging
 import re
 from pathlib import Path
 from ..nvidia_client import nvidia_client
+from ..note_renderer import classify_domain, slugify
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +19,25 @@ class NoteSeeder:
         self.vault_path = Path(vault_path)
         self.client = nvidia_client
 
-    def _get_note_path(self, term: str) -> Path:
-        """Helper to get a safe Markdown path for an entity term."""
+    def _get_note_path(self, term: str, master_note_context: str = "", subject_title: str = "") -> Path:
+        """Helper to get a safe Markdown path for an entity term in concept taxonomy."""
+        classification_context = f"{term} {subject_title} {master_note_context[:800]}"
+        domain = classify_domain(classification_context)
+
         # Sanitize filename to prevent path traversal and invalid characters
         safe_term = re.sub(r"[/\\:*?\"<>|]", "-", term)
         # Replace multiple dashes with single dash
         safe_term = re.sub(r"-+", "-", safe_term)
         safe_term = safe_term.strip("-")
-        return self.vault_path / f"{safe_term}.md"
+        safe_slug = slugify(safe_term) or safe_term.lower().replace(" ", "-")
+        return self.vault_path / "20_Concepts" / domain / f"{safe_slug}.md"
 
     def process_extracted_term(self, term: str, master_note_context: str, subject_title: str) -> bool:
         """
         Determines if a note exists. If not, spawns The Seed Maker.
         If yes, spawns The Surgeon to carefully append new context.
         """
-        note_path = self._get_note_path(term)
+        note_path = self._get_note_path(term, master_note_context, subject_title)
 
         if not note_path.exists():
             # Brand new concept -> Seed Maker
@@ -69,6 +74,7 @@ class NoteSeeder:
                 messages=messages,
                 temperature=0.3
             )
+            write_path.parent.mkdir(parents=True, exist_ok=True)
             write_path.write_text(response_text.strip(), encoding="utf-8")
             return True
         except Exception as e:

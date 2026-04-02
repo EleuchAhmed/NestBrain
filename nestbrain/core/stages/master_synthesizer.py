@@ -14,6 +14,8 @@ class MasterSynthesizer:
 
     def __init__(self):
         self.client = nvidia_client
+        self.used_fallback = False
+        self.last_error = ""
 
     def synthesize(self, subject: str, qa_history: List[Dict[str, str]]) -> str:
         """
@@ -60,9 +62,34 @@ class MasterSynthesizer:
                 messages=messages,
                 temperature=0.4
             )
+            self.used_fallback = False
+            self.last_error = ""
             
             return response_text.strip()
             
         except Exception as e:
             logger.error(f"Failed to synthesize Master Note: {e}")
-            return f"# {subject}\n\nWarning: Failed to synthesize. Raw Data:\n\n{formatted_qa}"
+            self.used_fallback = True
+            self.last_error = str(e)
+            condensed = qa_history[:8]
+            qa_blocks = "\n\n".join(
+                f"### Q: {entry.get('question', '').strip()}\n{entry.get('answer', '').strip()}"
+                for entry in condensed
+                if entry.get("question") and entry.get("answer")
+            )
+            if not qa_blocks:
+                qa_blocks = "No usable Q&A content was generated."
+
+            return (
+                f"# {subject}\n\n"
+                "## Executive Summary\n"
+                "Model synthesis failed, so this note was built from raw research responses.\n\n"
+                "## Core Findings\n"
+                "- Review the source-backed Q&A appendix below.\n"
+                "- Re-run synthesis after verifying NVIDIA API configuration.\n\n"
+                "## Open Questions\n"
+                "- Which areas need deeper source interrogation?\n"
+                "- Which claims need cross-source validation?\n\n"
+                "## Q&A Appendix\n"
+                f"{qa_blocks}\n"
+            )
