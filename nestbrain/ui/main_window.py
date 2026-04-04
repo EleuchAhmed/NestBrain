@@ -174,10 +174,18 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.sidebar.nav_changed.connect(self._on_nav_changed)
         self.sidebar.settings_clicked.connect(self._open_settings)
+        self.sidebar.refresh_clicked.connect(self._refresh_all_sections)
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
         self.zotero_panel.library_submitted.connect(self._set_zotero_library)
         self.zotero_panel.collection_selected.connect(self._set_selected_collection)
         self.zotero_panel.create_collection_requested.connect(self._create_zotero_collection)
+
+    def _refresh_all_sections(self) -> None:
+        """Refresh Zotero collections, parsed notes, and brain map sections."""
+        self.statusBar().showMessage("Refreshing Zotero, notes, and brain map...", 3000)
+        self.workspace.update_vault_overview(self.config.vault_path)
+        self._trigger_startup_scan()
+        self._start_zotero_sync()
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {

@@ -23,6 +23,7 @@ class NavItem:
 class Sidebar(QWidget):
     nav_changed = pyqtSignal(str)
     settings_clicked = pyqtSignal()
+    refresh_clicked = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -74,6 +75,11 @@ class Sidebar(QWidget):
         self.settings_button.setObjectName("SidebarSettingsButton")
         self.settings_button.clicked.connect(self.settings_clicked.emit)
 
+        self.refresh_button = QPushButton("↻  Refresh")
+        self.refresh_button.setObjectName("SidebarSettingsButton")
+        self.refresh_button.clicked.connect(self.refresh_clicked.emit)
+
+        root_layout.addWidget(self.refresh_button)
         root_layout.addWidget(self.settings_button)
         self.set_active("brain_map")
 
