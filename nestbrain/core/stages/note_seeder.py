@@ -1,6 +1,8 @@
 import logging
 import re
 from pathlib import Path
+import json
+from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
 from ..note_renderer import classify_domain, slugify
 
@@ -18,6 +20,8 @@ class NoteSeeder:
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
         self.client = nvidia_client
+        self.seeder_log_path = self.vault_path / "seeder_log.json"
+        self.link_overrides: dict[str, str] = {}
 
     def _get_note_path(self, term: str, master_note_context: str = "", subject_title: str = "") -> Path:
         """Helper to get a safe Markdown path for an entity term in concept taxonomy."""
@@ -39,15 +43,58 @@ class NoteSeeder:
         """
         note_path = self._get_note_path(term, master_note_context, subject_title)
 
+        existing_notes = self._scan_existing_notes_index()
+        semantic_result = self._semantic_duplicate_check(term, existing_notes)
+
+        if semantic_result.get("match_found"):
+            matched_note = str(semantic_result.get("matched_note") or "").strip()
+            if matched_note:
+                self.link_overrides[term] = matched_note
+            self._append_seeder_log(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "entity": term,
+                    "action": "skipped",
+                    "matched_note": matched_note or None,
+                    "reason": str(semantic_result.get("reasoning") or "Semantic duplicate found."),
+                }
+            )
+            logger.info("Seeder skipped '%s' because semantic duplicate exists: %s", term, matched_note or "unknown")
+            return True
+
         if not note_path.exists():
             # Brand new concept -> Seed Maker
             logger.info(f"Term '{term}' not found in vault. Spawning The Seed Maker.")
-            return self._seed_new_note(term, master_note_context, subject_title, note_path)
+            created = self._seed_new_note(term, master_note_context, subject_title, note_path)
+            self._append_seeder_log(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "entity": term,
+                    "action": "created" if created else "failed",
+                    "matched_note": None,
+                    "reason": "No semantic duplicate found in vault index.",
+                }
+            )
+            return created
         else:
-            # Exists -> Surgeon
-            logger.info(f"Term '{term}' already exists. Spawning The Surgeon to append context.")
-            existing_content = note_path.read_text(encoding="utf-8")
-            return self._patch_existing_note(term, existing_content, master_note_context, subject_title, note_path)
+            logger.info(f"Term '{term}' already exists by resolved path. Skipping mutation for backward safety.")
+            self.link_overrides[term] = note_path.stem
+            self._append_seeder_log(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "entity": term,
+                    "action": "skipped",
+                    "matched_note": note_path.stem,
+                    "reason": "Resolved canonical note path already exists.",
+                }
+            )
+            return True
+
+    def get_link_overrides(self) -> dict[str, str]:
+        return dict(self.link_overrides)
+
+    def reset_link_overrides(self) -> None:
+        self.link_overrides.clear()
 
     def _seed_new_note(self, term: str, master_note_context: str, subject_title: str, write_path: Path) -> bool:
         """The Seed Maker uses devstral to build a baseline concept node."""
@@ -117,3 +164,150 @@ class NoteSeeder:
         except Exception as e:
             logger.error(f"Surgeon failed on term '{term}': {e}")
             return False
+
+    def _scan_existing_notes_index(self) -> list[dict[str, str | list[str]]]:
+        index: list[dict[str, str | list[str]]] = []
+        for note_path in self.vault_path.rglob("*.md"):
+            title = note_path.stem.strip()
+            aliases = self._extract_aliases_from_frontmatter(note_path)
+            index.append(
+                {
+                    "title": title,
+                    "path": str(note_path),
+                    "aliases": aliases,
+                }
+            )
+        return index
+
+    def _extract_aliases_from_frontmatter(self, note_path: Path) -> list[str]:
+        try:
+            head = "\n".join(note_path.read_text(encoding="utf-8").splitlines()[:40])
+        except Exception:
+            return []
+
+        aliases: list[str] = []
+        block_match = re.search(r"(?ms)^---\s*\n(.*?)\n---", head)
+        if not block_match:
+            return aliases
+        frontmatter = block_match.group(1)
+
+        inline = re.search(r"(?im)^aliases\s*:\s*\[(.*?)\]\s*$", frontmatter)
+        if inline:
+            for token in inline.group(1).split(","):
+                value = token.strip().strip("\"'")
+                if value:
+                    aliases.append(value)
+
+        block = re.search(r"(?ims)^aliases\s*:\s*\n((?:\s*-\s*.*\n?)*)", frontmatter)
+        if block:
+            for line in block.group(1).splitlines():
+                item = re.sub(r"^\s*-\s*", "", line).strip().strip("\"'")
+                if item:
+                    aliases.append(item)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for alias in aliases:
+            key = alias.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(alias)
+        return deduped
+
+    def _semantic_duplicate_check(self, candidate: str, existing_notes: list[dict[str, str | list[str]]]) -> dict[str, object]:
+        normalized_candidate = self._normalize_concept(candidate)
+        for note in existing_notes:
+            title = str(note.get("title") or "")
+            aliases = [str(a) for a in (note.get("aliases") or [])]
+            variants = [title] + aliases
+            for variant in variants:
+                if self._normalize_concept(variant) == normalized_candidate:
+                    return {
+                        "match_found": True,
+                        "matched_note": title,
+                        "reasoning": "Exact normalized match from title/alias index.",
+                    }
+
+        if not self.client.is_configured() or not existing_notes:
+            return {
+                "match_found": False,
+                "matched_note": None,
+                "reasoning": "LLM semantic check unavailable or no existing notes.",
+            }
+
+        flattened_titles: list[str] = []
+        for note in existing_notes:
+            title = str(note.get("title") or "")
+            aliases = [str(a) for a in (note.get("aliases") or [])]
+            if title:
+                flattened_titles.append(title)
+            flattened_titles.extend(aliases)
+
+        prompt = (
+            "Given this list of existing note titles: "
+            f"{json.dumps(flattened_titles[:400], ensure_ascii=True)}\n"
+            f"Determine whether any of them refers to the same concept as: \"{candidate}\"\n"
+            "A match exists if they are:\n"
+            "- The same concept under a different name or abbreviation\n"
+            "- One is a direct alias or common shorthand of the other\n"
+            "- They describe the exact same technical thing, even if worded differently\n"
+            "Reply with JSON only: { \"match_found\": true | false, \"matched_note\": \"<filename or null>\", \"reasoning\": \"<one sentence>\" }"
+        )
+
+        try:
+            response = self.client.generate_chat_completion(
+                model=self.MODEL_SURGEON,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a strict semantic duplicate checker for IT note titles. Return JSON only.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+            )
+            cleaned = response.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            data = json.loads(cleaned.strip())
+            if not isinstance(data, dict):
+                raise ValueError("Duplicate checker response was not a JSON object.")
+            match_found = bool(data.get("match_found"))
+            matched_note = data.get("matched_note")
+            reasoning = str(data.get("reasoning") or "")
+            return {
+                "match_found": match_found,
+                "matched_note": str(matched_note).strip() if matched_note else None,
+                "reasoning": reasoning or "Semantic check completed.",
+            }
+        except Exception as exc:
+            logger.warning("Semantic duplicate check failed for '%s': %s", candidate, exc)
+            return {
+                "match_found": False,
+                "matched_note": None,
+                "reasoning": "Semantic check failed; proceeding as unmatched.",
+            }
+
+    def _normalize_concept(self, text: str) -> str:
+        normalized = text.lower().strip()
+        normalized = re.sub(r"\.(md|markdown)$", "", normalized)
+        normalized = normalized.replace("&", " and ")
+        normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+        normalized = re.sub(r"\s+", " ", normalized)
+        return normalized.strip()
+
+    def _append_seeder_log(self, entry: dict[str, object]) -> None:
+        logs: list[dict[str, object]] = []
+        if self.seeder_log_path.exists():
+            try:
+                existing = json.loads(self.seeder_log_path.read_text(encoding="utf-8"))
+                if isinstance(existing, list):
+                    logs = [row for row in existing if isinstance(row, dict)]
+            except Exception:
+                logs = []
+
+        logs.append(entry)
+        self.seeder_log_path.write_text(json.dumps(logs, indent=2), encoding="utf-8")

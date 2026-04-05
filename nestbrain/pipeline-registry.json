@@ -9,10 +9,11 @@
       "C7N7QUUR",
       "CS9WSHBK",
       "IVBWCA3M",
+      "LG5WFQCC",
       "LTTNNNXD"
     ],
     "media_paths": {},
-    "last_updated": "2026-04-02T11:31:45.060006"
+    "last_updated": "2026-04-04T16:26:08.253122"
   },
   "2PJPHXSQ": {
     "name": "Ai-Agents",
@@ -32,5 +33,19 @@
     "processed_sources": [],
     "media_paths": {},
     "last_updated": ""
+  },
+  "MGSTAH7W": {
+    "name": "prompt engineering",
+    "notebook_id": "ce746ddf-4937-484e-8a9a-1d3d638706b6",
+    "obsidian_path": "20_Concepts\\Systems Design\\prompt-engineering.md",
+    "processed_sources": [
+      "4FF7QUKD",
+      "5LM6PT4P",
+      "D8JVNEE2",
+      "J84NBJLM",
+      "ZCJVDXD6"
+    ],
+    "media_paths": {},
+    "last_updated": "2026-04-04T02:30:35.749275"
   }
 }

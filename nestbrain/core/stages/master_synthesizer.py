@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Dict
 from ..nvidia_client import nvidia_client
 
@@ -19,6 +20,9 @@ class MasterSynthesizer:
         "## Tradeoffs and Risks",
         "## Practical Checklist",
     ]
+    FORBIDDEN_LINK_SECTION_PATTERN = re.compile(
+        r"(?ims)^##?\s*(related notes|related links|links|knowledge graph)\s*$.*?(?=^##?\s|\Z)"
+    )
 
     def __init__(self):
         self.client = nvidia_client
@@ -48,7 +52,10 @@ class MasterSynthesizer:
             "- Use `###` subsections where needed and include source-grounded detail.\n"
             "- Include concrete mechanisms, constraints, and edge cases, not generic prose.\n"
             "- Do NOT write just a list of Q&As. Integrate the knowledge into a coherent technical note.\n"
-            "- Add Obsidian wikilinks like `[[Term]]` for notable entities and technologies.\n"
+            "- Embed Obsidian wikilinks like `[[Term]]` inline in natural sentences at first meaningful mention only.\n"
+            "- Never output a standalone section named Related Notes, Links, Related Links, or Knowledge Graph.\n"
+            "- Do not list bare wikilinks; each link must be contextualized in a sentence.\n"
+            "- Each linked concept should appear as a wikilink only once in the note.\n"
             "Produce ONLY the final localized markdown note text."
         )
 
@@ -78,6 +85,7 @@ class MasterSynthesizer:
                 temperature=0.4
             )
             final_text = self._ensure_required_structure(subject, response_text.strip(), qa_history)
+            final_text = self.weave_inline_wikilinks(final_text, [])
             self.used_fallback = False
             self.last_error = ""
             
@@ -136,7 +144,7 @@ class MasterSynthesizer:
         if len(expanded) < 1400:
             expanded += "\n\n## Detailed Evidence Notes\n"
             expanded += self._render_evidence_notes(qa_history)
-        return expanded
+        return self._remove_forbidden_link_sections(expanded)
 
     def _build_required_template(self, subject: str, qa_history: List[Dict[str, str]]) -> str:
         grouped = self._group_qa_by_theme(qa_history)
@@ -211,3 +219,79 @@ class MasterSynthesizer:
                 continue
             lines.append(f"- **{question}**: {answer[:280]}{'...' if len(answer) > 280 else ''}")
         return "\n".join(lines) if lines else "- No usable evidence entries available."
+
+    def weave_inline_wikilinks(
+        self,
+        content: str,
+        link_terms: List[str],
+        alias_map: Dict[str, str] | None = None,
+    ) -> str:
+        """Inject first-mention wikilinks inline and remove forbidden link sections."""
+        text = self._remove_forbidden_link_sections(content or "")
+        if not text.strip():
+            return text
+
+        alias_map = alias_map or {}
+        linked_targets: set[str] = set(
+            m.group(1).strip().lower()
+            for m in re.finditer(r"\[\[([^\]|#]+)(?:#[^\]]+)?(?:\|[^\]]+)?\]\]", text)
+        )
+
+        for term in link_terms:
+            mention = (term or "").strip()
+            if not mention:
+                continue
+            target = (alias_map.get(mention) or mention).strip()
+            if not target:
+                continue
+            if target.lower() in linked_targets:
+                continue
+
+            replaced = self._replace_first_meaningful_mention(text, mention, f"[[{target}]]")
+            if replaced != text:
+                text = replaced
+                linked_targets.add(target.lower())
+
+        return self._dedupe_existing_wikilinks(text)
+
+    def _remove_forbidden_link_sections(self, text: str) -> str:
+        cleaned = self.FORBIDDEN_LINK_SECTION_PATTERN.sub("", text)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip() + "\n"
+
+    def _replace_first_meaningful_mention(self, text: str, term: str, replacement: str) -> str:
+        lines = text.splitlines()
+        needle = term.lower()
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if re.fullmatch(r"\[\[[^\]]+\]\]", stripped):
+                continue
+
+            lower_line = line.lower()
+            pos = lower_line.find(needle)
+            if pos == -1:
+                continue
+
+            before = line[max(0, pos - 2):pos]
+            after = line[pos + len(term):pos + len(term) + 2]
+            if before == "[[" and after == "]]":
+                continue
+
+            lines[idx] = line[:pos] + replacement + line[pos + len(term):]
+            return "\n".join(lines)
+        return text
+
+    def _dedupe_existing_wikilinks(self, text: str) -> str:
+        seen: set[str] = set()
+
+        def _repl(match: re.Match[str]) -> str:
+            token = match.group(1).strip()
+            key = token.lower()
+            if key in seen:
+                return token
+            seen.add(key)
+            return match.group(0)
+
+        return re.sub(r"\[\[([^\]|#]+)(?:#[^\]]+)?(?:\|[^\]]+)?\]\]", _repl, text)

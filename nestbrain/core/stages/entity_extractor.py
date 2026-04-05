@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import List
+from typing import Any, List
 from ..nvidia_client import nvidia_client
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ class EntityExtractor:
         self.client = nvidia_client
         self.used_fallback = False
         self.last_error = ""
+        self.last_scored_entities: list[dict[str, Any]] = []
 
     def extract_entities(self, master_note: str) -> List[str]:
         """
@@ -27,11 +28,18 @@ class EntityExtractor:
         logger.info("Extracting knowledge entities from Master Note...")
 
         system_prompt = (
-            "You are an expert Data Scout. Your job is to extract fundamental knowledge entities "
-            "(technical terms, frameworks, prominent figures, specific algorithms, protocols) from the provided text.\n"
-            "Return ONLY a cleanly formatted JSON array of strings containing the exact entity names.\n"
-            "Ignore generic words, focus on noun phrases that deserve their own independent Wiki-style page.\n"
-            "Do NOT include markdown formatting or explanations."
+            "You are an expert IT Knowledge Entity Extractor.\n"
+            "Extract only concrete, specific IT technical entities from the provided master note.\n"
+            "Every extracted entity MUST satisfy ALL rules:\n"
+            "1) Specificity: named concept/protocol/technology/pattern/algorithm/tool/standard, not a generic noun.\n"
+            "2) Noteworthiness: an IT professional could write >=200 words about it in isolation.\n"
+            "3) Distinctness: one precise concept, not a broad category.\n"
+            "4) IT Domain: networking, operating systems, databases, software architecture, security, DevOps, programming languages/paradigms, distributed systems, hardware/low-level, or cloud infrastructure.\n"
+            "Output STRICT JSON array only. Each item must contain:\n"
+            "- entity (string)\n"
+            "- confidence (number 0.0 to 1.0)\n"
+            "- justification (single line string)\n"
+            "Do not include markdown or extra keys."
         )
 
         user_content = f"MASTER NOTE CONTENT:\n{master_note}"
@@ -54,12 +62,56 @@ class EntityExtractor:
             if cleaned_text.endswith("```"):
                 cleaned_text = cleaned_text[:-3]
                 
-            entities = json.loads(cleaned_text.strip())
-            
-            if not isinstance(entities, list):
-                raise ValueError("Response was not a JSON list of strings.")
-                
-            logger.info(f"Extracted {len(entities)} distinct entities.")
+            payload = json.loads(cleaned_text.strip())
+            if not isinstance(payload, list):
+                raise ValueError("Response was not a JSON list.")
+
+            scored_entities: list[dict[str, Any]] = []
+            for item in payload:
+                if isinstance(item, str):
+                    # Backward-compatible parsing if a model returns legacy string arrays.
+                    entity = item.strip()
+                    if entity:
+                        scored_entities.append(
+                            {
+                                "entity": entity,
+                                "confidence": 0.80,
+                                "justification": "Legacy string output treated as likely technical entity.",
+                            }
+                        )
+                    continue
+
+                if not isinstance(item, dict):
+                    continue
+                entity = str(item.get("entity", "")).strip()
+                justification = str(item.get("justification", "")).strip()
+                try:
+                    confidence = float(item.get("confidence", 0.0))
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                confidence = max(0.0, min(1.0, confidence))
+                if not entity or not justification:
+                    continue
+                scored_entities.append(
+                    {
+                        "entity": entity,
+                        "confidence": confidence,
+                        "justification": justification,
+                    }
+                )
+
+            self.last_scored_entities = scored_entities
+            entities = [
+                row["entity"]
+                for row in scored_entities
+                if row["confidence"] >= 0.75
+            ]
+
+            logger.info(
+                "Extracted %d entities, %d passed confidence gate >= 0.75.",
+                len(scored_entities),
+                len(entities),
+            )
             self.used_fallback = False
             self.last_error = ""
             return [str(e).strip() for e in entities if e]
@@ -68,7 +120,16 @@ class EntityExtractor:
             logger.error(f"Failed to extract entities: {e}")
             self.used_fallback = True
             self.last_error = str(e)
-            return self._extract_entities_heuristic(master_note)
+            fallback = self._extract_entities_heuristic(master_note)
+            self.last_scored_entities = [
+                {
+                    "entity": e,
+                    "confidence": 0.76,
+                    "justification": "Heuristic extraction from explicit technical cues.",
+                }
+                for e in fallback
+            ]
+            return fallback
 
     def _extract_entities_heuristic(self, master_note: str) -> List[str]:
         """Fallback extraction from wikilinks, acronyms, and title-cased phrases."""
@@ -87,15 +148,26 @@ class EntityExtractor:
             if len(cleaned) > 3:
                 candidates.append(cleaned)
 
+        generic_terms = {
+            "strategy", "role", "other", "advanced", "evolution", "system", "technology",
+            "framework", "component", "process", "method", "approach", "model", "pattern",
+            "architecture", "infrastructure", "development", "software", "hardware",
+        }
+
         filtered: list[str] = []
         seen: set[str] = set()
         for entity in candidates:
             entity = re.sub(r"\s+", " ", entity).strip(" -")
             if len(entity) < 3:
                 continue
-            if entity.lower() in {"the", "and", "for", "with", "from", "core findings"}:
+            lower = entity.lower()
+            if lower in {"the", "and", "for", "with", "from", "core findings"}:
                 continue
-            key = entity.lower()
+            if lower in generic_terms:
+                continue
+            if re.fullmatch(r"[a-z]+", lower) and len(lower.split()) == 1:
+                continue
+            key = lower
             if key in seen:
                 continue
             seen.add(key)

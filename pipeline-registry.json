@@ -2,7 +2,7 @@
   "2PJPHXSQ": {
     "name": "Ai-Agents",
     "notebook_id": "5ca13c40-69a9-44c6-93ce-5485507f199f",
-    "obsidian_path": "",
+    "obsidian_path": "20_Concepts\\Agents & Autonomy\\ai-agents.md",
     "processed_sources": [
       "7C7888FN",
       "TVUA3Q84"
@@ -12,15 +12,15 @@
   },
   "6W96EP2Z": {
     "name": "Desktop app dev",
-    "notebook_id": "26839cc4-b964-477c-907e-edb9cfb084ab",
-    "obsidian_path": "",
+    "notebook_id": "87ee7984-57e8-4f31-ba56-694e201bff6f",
+    "obsidian_path": "20_Concepts\\Systems Design\\desktop-app-dev.md",
     "processed_sources": [],
     "media_paths": {},
     "last_updated": ""
   },
   "EJWZ2YDM": {
     "name": "LLM-FineTuning",
-    "notebook_id": "c4f799d9-056b-4b7b-b3f7-5148ba184b5a",
+    "notebook_id": "afcba894-d081-46d6-a697-c1fbe70409e5",
     "obsidian_path": "",
     "processed_sources": [
       "2TEU3LTU",
@@ -31,14 +31,6 @@
       "LTTNNNXD"
     ],
     "media_paths": {},
-    "last_updated": "2026-04-02T13:01:56.684508"
-  },
-  "X4WEUHVD": {
-    "name": "test",
-    "notebook_id": "3f2d8b7b-b589-4e88-809d-041edab5a8f8",
-    "obsidian_path": "",
-    "processed_sources": [],
-    "media_paths": {},
-    "last_updated": ""
+    "last_updated": "2026-04-02T13:45:32.873275"
   }
 }

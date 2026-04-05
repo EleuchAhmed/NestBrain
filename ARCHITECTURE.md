@@ -44,13 +44,16 @@ MCP client
 8. The question planner generates a taxonomy of research prompts.
 9. The Q and A loop interrogates NotebookLM repeatedly.
 10. The synthesizer turns the research history into a master note.
-11. Entity extraction identifies candidate linked notes.
-12. The seeder creates or patches term notes.
-13. The vector indexer embeds the note and stores local similarity state.
-14. The semantic auditor filters candidate related notes.
-15. The connection annotator appends semantic linkage text to related notes.
-16. The note writer writes the final Markdown into the vault.
-17. The pipeline runner archives summary metadata and the UI refreshes the graph.
+11. The synthesizer enforces inline first-mention wikilinks and removes trailing link-list sections.
+12. Entity extraction returns scored technical entities and only forwards entries with confidence >= 0.75.
+13. The seeder performs pre-seeding semantic duplicate research using existing note titles and aliases.
+14. Duplicate entities are skipped, logged, and flagged as link overrides for the synthesizer.
+15. Unmatched entities create new term notes; existing notes are not mutated during seeding.
+16. The vector indexer embeds the note and stores local similarity state.
+17. The semantic auditor filters candidate related notes.
+18. The connection annotator appends semantic linkage text to related notes.
+19. The note writer writes the final Markdown into the vault.
+20. The pipeline runner archives summary metadata and the UI refreshes the graph.
 
 ### Graph Flow
 1. `ObsidianParser` scans the vault for Markdown notes.
@@ -93,6 +96,7 @@ MCP client
 - Best understood as a local orchestration monolith with worker-thread isolation.
 - UI and business logic are intentionally separated.
 - Runtime state is mostly on disk.
+- Seeder decisions are persisted in `seeder_log.json` in the Obsidian vault for traceability.
 
 ### TypeScript MCP Server
 - Best understood as a companion control plane, not the main desktop app.

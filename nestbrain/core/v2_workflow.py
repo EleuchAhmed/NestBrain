@@ -218,10 +218,17 @@ class PipelineWorkflowV2:
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
             entities = self._dedupe_entities(entities)
+            self.seeder.reset_link_overrides()
             
             for term in entities:
                 self._emit(status_callback, f"L2: Seeding/Patching entity '{term}'")
                 self.seeder.process_extracted_term(term, deep_dive_content, collection.name)
+
+            deep_dive_content = self.synthesizer.weave_inline_wikilinks(
+                deep_dive_content,
+                entities,
+                alias_map=self.seeder.get_link_overrides(),
+            )
 
             # Save a structured note into the standard vault hierarchy.
             synthesis_payload = SynthesisResult(
