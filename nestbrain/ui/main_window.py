@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ..core.pipeline_runner import PipelineConfig, PipelineRunner, save_config
+from ..core.pipeline_runner import PipelineConfig, save_config
 from ..core.zotero_sync import ZoteroSyncClient
-from ..ui.sidebar import Sidebar
+from ..ui.sidebar import TopNavBar
 from ..ui.workspace import Workspace
-from ..ui.zotero_panel import LocalSyncManager, ZoteroPanel
+from ..ui.zotero_panel import LocalSyncManager
 from ..workers.graph_worker import GraphWorker
 from ..workers.pipeline_worker import PipelineWorker
 from ..workers.sync_worker import SyncWorker
@@ -103,7 +103,7 @@ class MainWindow(QMainWindow):
         self.config_path = config_path
         self.config = config
 
-        self.setWindowTitle("Nestbrain")
+        self.setWindowTitle("Nestbrain | Pipeline")
         self.resize(1440, 900)
 
         self._pipeline_thread: QThread | None = None
@@ -118,28 +118,25 @@ class MainWindow(QMainWindow):
         self._graph_worker: GraphWorker | None = None
         self._selected_collection_key = self.config.selected_collection_key.strip()
 
-        self.sidebar = Sidebar()
+        self.top_nav = TopNavBar()
         self.workspace = Workspace()
-        self.zotero_panel = ZoteroPanel()
-        self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
+        self.pipeline_panel = self.workspace.pipeline_panel
+        self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
 
         self.sync_manager = LocalSyncManager(vault_path=self.config.vault_path, parent=self)
-        self.sync_manager.sync_status_changed.connect(self.zotero_panel.update_sync_chip)
         self.sync_manager.start()
 
         container = QWidget()
-        root = QHBoxLayout(container)
+        root = QVBoxLayout(container)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        root.addWidget(self.sidebar)
+        root.addWidget(self.top_nav)
         root.addWidget(self.workspace, 1)
-        root.addWidget(self.zotero_panel)
 
         self.setCentralWidget(container)
         self._apply_dark_theme()
         self._connect_signals()
-        self._load_archive()
         self.workspace.update_vault_overview(self.config.vault_path)
         self._start_initial_sync()
         self._trigger_startup_scan()
@@ -172,29 +169,28 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _connect_signals(self) -> None:
-        self.sidebar.nav_changed.connect(self._on_nav_changed)
-        self.sidebar.settings_clicked.connect(self._open_settings)
-        self.sidebar.refresh_clicked.connect(self._refresh_all_sections)
+        self.top_nav.nav_changed.connect(self._on_nav_changed)
+        self.top_nav.settings_clicked.connect(self._open_settings)
+        self.top_nav.refresh_clicked.connect(self._refresh_all_sections)
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
-        self.zotero_panel.library_submitted.connect(self._set_zotero_library)
-        self.zotero_panel.collection_selected.connect(self._set_selected_collection)
-        self.zotero_panel.create_collection_requested.connect(self._create_zotero_collection)
+        self.pipeline_panel.collection_selected.connect(self._set_selected_collection)
+        self.pipeline_panel.create_collection_requested.connect(self._create_collection)
 
     def _refresh_all_sections(self) -> None:
         """Refresh Zotero collections, parsed notes, and brain map sections."""
-        self.statusBar().showMessage("Refreshing Zotero, notes, and brain map...", 3000)
+        self.statusBar().showMessage("Refreshing pipeline, notes, and brain map...", 3000)
         self.workspace.update_vault_overview(self.config.vault_path)
         self._trigger_startup_scan()
-        self._start_zotero_sync()
+        self._start_collection_sync()
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {
-            "archive": "archive",
             "obsidian_notes": "notes",
-            "zotero_sync": "home",
+            "pipeline": "pipeline",
             "brain_map": "brain",
         }
-        self.workspace.set_view(mapping.get(key, "home"))
+        self.top_nav.set_active(key)
+        self.workspace.set_view(mapping.get(key, "pipeline"))
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self.config, self)
@@ -218,15 +214,9 @@ class MainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("Settings saved", 3000)
 
-    def _set_zotero_library(self, value: str) -> None:
-        self.config = replace(self.config, zotero_library_id=value)
-        save_config(self.config_path, self.config)
-        self._collection_items_cache.clear()
-        self._start_zotero_sync()
-
     def _set_selected_collection(self, collection_key: str) -> None:
         self._selected_collection_key = collection_key.strip()
-        self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
+        self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
         self.config = replace(self.config, selected_collection_key=self._selected_collection_key)
         save_config(self.config_path, self.config)
         self._load_collection_elements(self._selected_collection_key)
@@ -235,7 +225,7 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("Pipeline target collection cleared (all collections)", 3500)
 
-    def _create_zotero_collection(self, name: str) -> None:
+    def _create_collection(self, name: str) -> None:
         collection_name = name.strip()
         if not collection_name:
             self.statusBar().showMessage("Enter a collection name before creating", 3000)
@@ -250,16 +240,16 @@ class MainWindow(QMainWindow):
             created = client.create_collection(collection_name)
 
             self._selected_collection_key = created.key.strip()
-            self.zotero_panel.set_selected_collection_key(self._selected_collection_key)
+            self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
             self.config = replace(self.config, selected_collection_key=self._selected_collection_key)
             save_config(self.config_path, self.config)
 
-            self.zotero_panel.clear_create_collection_input()
-            self.statusBar().showMessage(f"Created Zotero collection: {created.name}", 5000)
-            self._start_zotero_sync()
+            self.pipeline_panel.clear_create_collection_input()
+            self.statusBar().showMessage(f"Created collection: {created.name}", 5000)
+            self._start_collection_sync()
             self._load_collection_elements(self._selected_collection_key)
         except Exception as exc:
-            QMessageBox.critical(self, "Create Collection Failed", f"Could not create Zotero collection:\n{exc}")
+            QMessageBox.critical(self, "Create Collection Failed", f"Could not create collection:\n{exc}")
 
     def _start_pipeline(self) -> None:
         if self._thread_running(self._pipeline_thread):
@@ -302,10 +292,8 @@ class MainWindow(QMainWindow):
 
         self.workspace.update_notes(notes)
         self.workspace.update_graph(graph_payload)
-        self.zotero_panel.update_collections(collections)
-        self.zotero_panel.set_connection_active(bool(collections))
-
-        self._load_archive()
+        self.pipeline_panel.update_collections(collections)
+        self.pipeline_panel.set_connection_active(bool(collections))
         self.sync_manager.mark_synced()
         self.workspace.update_vault_overview(self.config.vault_path)
 
@@ -330,15 +318,15 @@ class MainWindow(QMainWindow):
         self.workspace.set_pipeline_progress(100, "Pipeline complete")
 
     def _start_initial_sync(self) -> None:
-        self._start_zotero_sync()
+        self._start_collection_sync()
 
-    def _start_zotero_sync(self) -> None:
+    def _start_collection_sync(self) -> None:
         if self._thread_running(self._sync_thread):
             return
 
         self._live_collections = []
         self._collection_items_cache.clear()
-        self.zotero_panel.update_collections([])
+        self.pipeline_panel.update_collections([])
 
         self._sync_thread = QThread(self)
         self._sync_worker = SyncWorker(host=self.config.zotero_host, library_id=self.config.zotero_library_id)
@@ -356,24 +344,24 @@ class MainWindow(QMainWindow):
 
     def _on_collection_updated(self, collection: dict[str, Any]) -> None:
         self._live_collections.append(collection)
-        self.zotero_panel.update_collections(self._live_collections)
+        self.pipeline_panel.update_collections(self._live_collections)
 
     def _on_sync_done(self) -> None:
-        self.zotero_panel.set_connection_active(bool(self._live_collections))
+        self.pipeline_panel.set_connection_active(bool(self._live_collections))
         self._load_collection_elements(self._selected_collection_key)
 
     def _on_sync_error(self, message: str) -> None:
-        self.zotero_panel.set_connection_active(False)
-        self.statusBar().showMessage(f"Zotero sync failed: {message}", 6000)
+        self.pipeline_panel.set_connection_active(False)
+        self.statusBar().showMessage(f"Pipeline sync failed: {message}", 6000)
 
     def _load_collection_elements(self, collection_key: str) -> None:
         key = collection_key.strip()
         if not key:
-            self.zotero_panel.update_collection_elements([])
+            self.pipeline_panel.update_collection_elements([])
             return
 
         if key in self._collection_items_cache:
-            self.zotero_panel.update_collection_elements(self._collection_items_cache[key])
+            self.pipeline_panel.update_collection_elements(self._collection_items_cache[key])
             return
 
         try:
@@ -384,9 +372,9 @@ class MainWindow(QMainWindow):
             )
             items = [asdict(item) for item in client.get_items_for_collection(key)]
             self._collection_items_cache[key] = items
-            self.zotero_panel.update_collection_elements(items)
+            self.pipeline_panel.update_collection_elements(items)
         except Exception as exc:
-            self.zotero_panel.update_collection_elements([])
+            self.pipeline_panel.update_collection_elements([])
             self.statusBar().showMessage(f"Failed to load collection elements: {exc}", 6000)
 
     def _start_graph_worker(self, notes: list[dict[str, Any]], collections: list[dict[str, Any]]) -> None:
@@ -406,10 +394,6 @@ class MainWindow(QMainWindow):
         self._graph_thread.finished.connect(self._graph_thread.deleteLater)
         self._graph_thread.start()
 
-    def _load_archive(self) -> None:
-        archive = PipelineRunner(self.app_root).load_archive()
-        self.workspace.update_archive(archive)
-
     def _apply_dark_theme(self) -> None:
         self.setStyleSheet(
             """
@@ -424,58 +408,60 @@ class MainWindow(QMainWindow):
                 width: 1px;
                 height: 1px;
             }
-            #Sidebar {
+            #TopHeaderBar {
                 background-color: #09090b;
-                border-right: 1px solid #27272a;
+                border-bottom: 1px solid #27272a;
             }
-            #SidebarTitle {
-                font-size: 24px;
-                font-weight: 800;
-                letter-spacing: -0.5px;
+            #TopNavTitle {
                 color: #fafafa;
-                margin-top: 10px;
-            }
-            #SidebarSubtitle {
-                color: #a1a1aa;
-                font-size: 11px;
-                font-weight: 500;
-                text-transform: uppercase;
+                font-size: 14px;
+                font-weight: 800;
                 letter-spacing: 1px;
-                margin-bottom: 20px;
             }
-            #SidebarButton, #SidebarSettingsButton {
+            #TopNavButton, #TopNavUtilityButton {
                 background-color: transparent;
                 border: 1px solid transparent;
-                border-radius: 6px;
-                min-height: 32px;
-                text-align: left;
-                padding-left: 10px;
+                border-radius: 8px;
+                min-height: 34px;
+                padding: 0 12px;
                 color: #a1a1aa;
+                text-align: center;
             }
-            #SidebarButton:hover, #SidebarSettingsButton:hover {
+            #TopNavButton:hover, #TopNavUtilityButton:hover {
                 background-color: #18181b;
                 color: #fafafa;
             }
-            #SidebarButton:checked {
+            #TopNavButton:checked {
                 background-color: #1e1b4b;
                 color: #c4b5fd;
                 border: 1px solid #312e81;
                 font-weight: 600;
             }
-            #Headline {
+            #PipelineHeadline {
                 font-size: 42px;
                 font-weight: 800;
                 letter-spacing: -1.5px;
                 line-height: 1;
                 color: #fafafa;
             }
-            #SubHeadline {
+            #PipelineSubHeadline {
                 font-size: 18px;
                 font-weight: 400;
                 color: #a1a1aa;
                 line-height: 1.4;
             }
-            #StartPipelineButton {
+            #PipelineStatus,
+            #VaultPathLabel {
+                color: #a1a1aa;
+                font-size: 11px;
+            }
+            #PipelineCollectionInfo,
+            #PipelineCollectionMeta,
+            #PipelineSyncChipSubtitle {
+                color: #a1a1aa;
+                font-size: 11px;
+            }
+            #PipelineStartButton {
                 background-color: #7c3aed;
                 color: #ffffff;
                 border: none;
@@ -484,13 +470,13 @@ class MainWindow(QMainWindow):
                 font-size: 16px;
                 padding: 0 24px;
             }
-            #StartPipelineButton:hover {
+            #PipelineStartButton:hover {
                 background-color: #8b5cf6;
             }
-            #StartPipelineButton:pressed {
+            #PipelineStartButton:pressed {
                 background-color: #6d28d9;
             }
-            #StartPipelineButton:disabled {
+            #PipelineStartButton:disabled {
                 background-color: #27272a;
                 color: #52525b;
             }
@@ -512,54 +498,67 @@ class MainWindow(QMainWindow):
                 color: #a1a1aa;
                 font-size: 12px;
             }
-            #ZoteroPanel {
+            #PipelinePanel {
                 background-color: #09090b;
-                border-left: 1px solid #27272a;
+                border: 1px solid #27272a;
+                border-radius: 12px;
             }
-            #ZoteroHeader {
+            #PipelineHeader {
                 font-size: 18px;
                 font-weight: 700;
                 color: #fafafa;
                 letter-spacing: -0.5px;
             }
-            #PanelSubLabel {
+            #PipelineSectionHeader {
                 color: #71717a;
-                font-size: 10px;
+                font-size: 11px;
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 1px;
             }
-            #CollectionCard {
+            #PipelineCollectionCard {
                 background-color: #18181b;
                 border: 1px solid #27272a;
                 border-radius: 8px;
             }
-            #CollectionCard[selected="true"] {
+            #PipelineCollectionCard[selected="true"] {
                 border-color: #7c3aed;
                 background-color: #1e1b4b;
             }
-            #CollectionName {
+            #PipelineCollectionName {
                 font-size: 13px;
                 font-weight: 600;
                 color: #fafafa;
             }
-            #CollectionInfo, #CollectionMeta {
+            #PipelineCollectionInfo, #PipelineCollectionMeta {
                 color: #a1a1aa;
                 font-size: 11px;
             }
-            #SyncChip {
+            #PipelineSyncChip {
                 background-color: #18181b;
                 border: 1px solid #27272a;
                 border-radius: 8px;
             }
-            #SyncChipTitle {
+            #PipelineSyncChipTitle {
                 color: #c4b5fd;
                 font-size: 11px;
                 font-weight: 700;
             }
-            #SyncChipSubtitle {
+            #PipelineSyncChipSubtitle {
                 color: #71717a;
                 font-size: 10px;
+            }
+            #PipelineScrollArea {
+                background: #09090b;
+                border: none;
+            }
+            #PipelineProgressBar {
+                border: 1px solid #27272a;
+                border-radius: 6px;
+                background-color: #18181b;
+                text-align: center;
+                height: 8px;
+                color: transparent;
             }
             QLineEdit, QListWidget, QTableWidget, QTreeWidget {
                 background-color: #09090b;

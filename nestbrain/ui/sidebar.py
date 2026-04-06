@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
     QLabel,
+    QHBoxLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -20,39 +21,34 @@ class NavItem:
     icon: str
 
 
-class Sidebar(QWidget):
+class TopNavBar(QWidget):
     nav_changed = pyqtSignal(str)
     settings_clicked = pyqtSignal()
     refresh_clicked = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("Sidebar")
-        self.setMinimumWidth(220)
-        self.setMaximumWidth(240)
+        self.setObjectName("TopHeaderBar")
+        self.setFixedHeight(56)
 
         self.nav_items: list[NavItem] = [
             NavItem("brain_map", "Brain-Map", "⊙"),
-            NavItem("archive", "Archive", "⊞"),
             NavItem("obsidian_notes", "Notes", "≡"),
-            NavItem("zotero_sync", "Zotero", "♽"),
+            NavItem("pipeline", "Pipeline", "✦"),
         ]
 
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(18, 16, 18, 16)
-        root_layout.setSpacing(16)
+        root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(16, 8, 16, 8)
+        root_layout.setSpacing(12)
 
         title = QLabel("NESTBRAIN")
-        title.setObjectName("SidebarTitle")
-        subtitle = QLabel("EtherealArchivist")
-        subtitle.setObjectName("SidebarSubtitle")
+        title.setObjectName("TopNavTitle")
 
         root_layout.addWidget(title)
-        root_layout.addWidget(subtitle)
 
         nav_container = QFrame()
-        nav_layout = QVBoxLayout(nav_container)
-        nav_layout.setContentsMargins(0, 8, 0, 8)
+        nav_layout = QHBoxLayout(nav_container)
+        nav_layout.setContentsMargins(12, 0, 12, 0)
         nav_layout.setSpacing(8)
 
         self.button_group = QButtonGroup(self)
@@ -62,7 +58,8 @@ class Sidebar(QWidget):
         for nav in self.nav_items:
             button = QPushButton(f"{nav.icon}  {nav.label}")
             button.setCheckable(True)
-            button.setObjectName("SidebarButton")
+            button.setObjectName("TopNavButton")
+            button.setMinimumHeight(34)
             button.clicked.connect(lambda checked, key=nav.key: self._emit_nav(key))
             self.button_group.addButton(button)
             nav_layout.addWidget(button)
@@ -71,17 +68,26 @@ class Sidebar(QWidget):
         root_layout.addWidget(nav_container)
         root_layout.addStretch(1)
 
+        utility_row = QHBoxLayout()
+        utility_row.setSpacing(8)
+
         self.settings_button = QPushButton("⚙  Settings")
-        self.settings_button.setObjectName("SidebarSettingsButton")
+        self.settings_button.setObjectName("TopNavUtilityButton")
+        self.settings_button.setMinimumHeight(34)
         self.settings_button.clicked.connect(self.settings_clicked.emit)
 
         self.refresh_button = QPushButton("↻  Refresh")
-        self.refresh_button.setObjectName("SidebarSettingsButton")
+        self.refresh_button.setObjectName("TopNavUtilityButton")
+        self.refresh_button.setMinimumHeight(34)
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
 
-        root_layout.addWidget(self.refresh_button)
-        root_layout.addWidget(self.settings_button)
-        self.set_active("brain_map")
+        utility_row.addWidget(self.refresh_button)
+        utility_row.addWidget(self.settings_button)
+
+        utility_container = QWidget()
+        utility_container.setLayout(utility_row)
+        root_layout.addWidget(utility_container)
+        self.set_active("pipeline")
 
     def set_active(self, key: str) -> None:
         if key in self.buttons:

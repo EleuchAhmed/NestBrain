@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -8,12 +7,10 @@ from typing import Any
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
-    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -101,104 +98,35 @@ class LocalSyncManager(QObject):
         self.sync_status_changed.emit(title, subtitle)
 
 
-@dataclass
-class CollectionDisplay:
-    name: str
-    item_count: int
-    modified: str
-    status: str
-
-
-class CollectionItemWidget(QFrame):
-    def __init__(self, collection: CollectionDisplay, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.collection = collection
-
-        self.setObjectName("CollectionCard")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(4)
-
-        top = QHBoxLayout()
-        name_label = QLabel(f"{collection.name}")
-        name_label.setObjectName("CollectionName")
-        self.dot = QLabel("●")
-
-        top.addWidget(name_label, 1)
-        top.addWidget(self.dot)
-
-        info = QLabel(f"{collection.item_count} items")
-        info.setObjectName("CollectionInfo")
-        meta = QLabel(f"Updated {collection.modified}")
-        meta.setObjectName("CollectionMeta")
-
-        layout.addLayout(top)
-        layout.addWidget(info)
-        layout.addWidget(meta)
-
-        self._blink_timer = QTimer(self)
-        self._blink_timer.setInterval(550)
-        self._blink_timer.timeout.connect(self._blink)
-        self._visible = True
-
-        self.set_status(collection.status)
-
-    def set_status(self, status: str) -> None:
-        if status.lower() == "syncing":
-            self.dot.setStyleSheet("color: #7c3aed;")
-            if not self._blink_timer.isActive():
-                self._blink_timer.start()
-        else:
-            self.dot.setStyleSheet("color: #3f3f46;")
-            self.dot.setVisible(True)
-            self._blink_timer.stop()
-
-    def _blink(self) -> None:
-        self._visible = not self._visible
-        self.dot.setVisible(self._visible)
-
-
-class ZoteroPanel(QWidget):
-    library_submitted = pyqtSignal(str)
+class PipelinePanel(QWidget):
     collection_selected = pyqtSignal(str)
     create_collection_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumWidth(320)
-        self.setMaximumWidth(380)
-        self.setObjectName("ZoteroPanel")
+        self.setObjectName("PipelinePanel")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(12)
 
         header_row = QHBoxLayout()
-        title = QLabel("Zotero Integration")
-        title.setObjectName("ZoteroHeader")
+        title = QLabel("Pipeline")
+        title.setObjectName("PipelineHeader")
 
         self.badge = QLabel("INACTIVE")
-        self.badge.setObjectName("StatusBadge")
+        self.badge.setObjectName("PipelineStatusBadge")
 
         header_row.addWidget(title)
         header_row.addStretch(1)
         header_row.addWidget(self.badge)
 
-        source_label = QLabel("SOURCE URL / LIBRARY ID")
-        source_label.setObjectName("PanelSubLabel")
+        def section_header(text: str) -> QLabel:
+            label = QLabel(text)
+            label.setObjectName("PipelineSectionHeader")
+            return label
 
-        source_row = QHBoxLayout()
-        self.source_input = QLineEdit()
-        self.source_input.setPlaceholderText("Paste Zotero URL/ID...")
-        self.add_button = QPushButton("+")
-        self.add_button.setFixedWidth(34)
-        self.add_button.clicked.connect(self._emit_library)
-
-        source_row.addWidget(self.source_input)
-        source_row.addWidget(self.add_button)
-
-        create_label = QLabel("ADD ZOTERO COLLECTION")
-        create_label.setObjectName("PanelSubLabel")
+        create_label = section_header("ADD COLLECTION")
 
         create_row = QHBoxLayout()
         self.new_collection_input = QLineEdit()
@@ -209,61 +137,49 @@ class ZoteroPanel(QWidget):
         create_row.addWidget(self.new_collection_input)
         create_row.addWidget(self.create_collection_button)
 
-        collections_label_row = QHBoxLayout()
-        collections_label = QLabel("ACTIVE COLLECTIONS")
-        collections_label.setObjectName("PanelSubLabel")
-        self.folder_count = QLabel("0 Folders")
+        collections_label = section_header("COLLECTION")
 
-        collections_label_row.addWidget(collections_label)
-        collections_label_row.addStretch(1)
-        collections_label_row.addWidget(self.folder_count)
+        sources_label = section_header("SOURCES")
 
-        self.collection_list = QListWidget()
-        self.collection_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self.collection_list.itemSelectionChanged.connect(self._emit_selected_collection)
-
-        self.collection_dropdown = QComboBox()
-        self.collection_dropdown.setObjectName("CollectionDropdown")
-        self.collection_dropdown.currentIndexChanged.connect(self._emit_selected_dropdown_collection)
-
-        element_label = QLabel("COLLECTION ELEMENTS")
-        element_label.setObjectName("PanelSubLabel")
-        self.element_dropdown = QComboBox()
-        self.element_dropdown.setObjectName("ElementDropdown")
-        self.element_dropdown.addItem("Select a collection to load elements")
-
-        self.sync_chip = QFrame()
-        self.sync_chip.setObjectName("SyncChip")
-        chip_layout = QHBoxLayout(self.sync_chip)
-        chip_layout.setContentsMargins(10, 8, 10, 8)
-
-        icon = QLabel("☁")
-        self.sync_title = QLabel("CLOUD SYNCHRONIZED")
-        self.sync_title.setObjectName("SyncChipTitle")
-        self.sync_subtitle = QLabel("EVERYTHING UP TO DATE")
-        self.sync_subtitle.setObjectName("SyncChipSubtitle")
-
-        text_col = QVBoxLayout()
-        text_col.setSpacing(0)
-        text_col.addWidget(self.sync_title)
-        text_col.addWidget(self.sync_subtitle)
-
-        chip_layout.addWidget(icon)
-        chip_layout.addLayout(text_col)
-
-        root.addLayout(header_row)
-        root.addWidget(source_label)
-        root.addLayout(source_row)
-        root.addWidget(create_label)
-        root.addLayout(create_row)
-        root.addLayout(collections_label_row)
-        root.addWidget(self.collection_dropdown)
-        root.addWidget(self.collection_list, 1)
-        root.addWidget(element_label)
-        root.addWidget(self.element_dropdown)
-        root.addWidget(self.sync_chip)
         self._selected_collection_key = ""
         self._suppress_dropdown_signal = False
+
+        self.collection_dropdown = QComboBox()
+        self.collection_dropdown.setObjectName("PipelineCollectionDropdown")
+        self.collection_dropdown.currentIndexChanged.connect(self._emit_selected_dropdown_collection)
+        self.collection_dropdown.addItem("Select collection...", "")
+
+        self.sources_list = QListWidget()
+        self.sources_list.setObjectName("PipelineSourcesList")
+        self.sources_list.addItem("Select a collection to load sources")
+
+        left_col = QWidget()
+        left_layout = QVBoxLayout(left_col)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(8)
+
+        right_col = QWidget()
+        right_layout = QVBoxLayout(right_col)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
+
+        content_row = QHBoxLayout()
+        content_row.setSpacing(14)
+
+        left_layout.addWidget(create_label)
+        left_layout.addLayout(create_row)
+        left_layout.addWidget(collections_label)
+        left_layout.addWidget(self.collection_dropdown)
+        left_layout.addStretch(1)
+
+        right_layout.addWidget(sources_label)
+        right_layout.addWidget(self.sources_list, 1)
+
+        content_row.addWidget(left_col, 1)
+        content_row.addWidget(right_col, 2)
+
+        root.addLayout(header_row)
+        root.addLayout(content_row, 1)
 
     def set_connection_active(self, active: bool) -> None:
         if active:
@@ -274,32 +190,15 @@ class ZoteroPanel(QWidget):
             self.badge.setStyleSheet("background-color: #35252a; color: #f1afb8; padding: 4px 8px; border-radius: 9px;")
 
     def update_collections(self, collections: list[dict[str, Any]]) -> None:
-        self.collection_list.clear()
         self._suppress_dropdown_signal = True
         self.collection_dropdown.clear()
         self.collection_dropdown.addItem("Select collection...", "")
-        self.folder_count.setText(f"{len(collections)} Folders")
-
-        selected_item: QListWidgetItem | None = None
 
         for collection in collections:
-            display = CollectionDisplay(
-                name=str(collection.get("name", "Untitled")),
-                item_count=int(collection.get("item_count", 0)),
-                modified=str(collection.get("last_modified", "Unknown")),
-                status=str(collection.get("status", "Idle")),
-            )
+            display_name = str(collection.get("name", "Untitled"))
             collection_key = str(collection.get("key", "")).strip()
-            widget = CollectionItemWidget(display)
-            item = QListWidgetItem(self.collection_list)
-            item.setData(Qt.ItemDataRole.UserRole, collection_key)
-            item.setSizeHint(widget.sizeHint())
-            self.collection_list.addItem(item)
-            self.collection_list.setItemWidget(item, widget)
-            self.collection_dropdown.addItem(display.name, collection_key)
-
-            if collection_key and collection_key == self._selected_collection_key:
-                selected_item = item
+            item_count = int(collection.get("item_count", 0))
+            self.collection_dropdown.addItem(f"{display_name} ({item_count})", collection_key)
 
         if self._selected_collection_key:
             idx = self.collection_dropdown.findData(self._selected_collection_key)
@@ -312,13 +211,6 @@ class ZoteroPanel(QWidget):
 
         self._suppress_dropdown_signal = False
 
-        if selected_item is not None:
-            selected_item.setSelected(True)
-
-    def update_sync_chip(self, title: str, subtitle: str) -> None:
-        self.sync_title.setText(title)
-        self.sync_subtitle.setText(subtitle)
-
     def set_selected_collection_key(self, collection_key: str) -> None:
         self._selected_collection_key = collection_key.strip()
         idx = self.collection_dropdown.findData(self._selected_collection_key)
@@ -330,42 +222,21 @@ class ZoteroPanel(QWidget):
         self._suppress_dropdown_signal = False
 
     def update_collection_elements(self, items: list[dict[str, Any]]) -> None:
-        self.element_dropdown.clear()
+        self.sources_list.clear()
         if not items:
-            self.element_dropdown.addItem("No elements found")
+            self.sources_list.addItem("No sources found")
             return
 
         for item in items:
             title = str(item.get("title") or "Untitled")
             item_type = str(item.get("item_type") or "item")
-            item_key = str(item.get("key") or "")
-            self.element_dropdown.addItem(f"{title} [{item_type}]", item_key)
-
-    def _emit_library(self) -> None:
-        self.library_submitted.emit(self.source_input.text().strip())
+            self.sources_list.addItem(f"{title} [{item_type}]")
 
     def _emit_create_collection(self) -> None:
         self.create_collection_requested.emit(self.new_collection_input.text().strip())
 
     def clear_create_collection_input(self) -> None:
         self.new_collection_input.clear()
-
-    def _emit_selected_collection(self) -> None:
-        items = self.collection_list.selectedItems()
-        if not items:
-            self._selected_collection_key = ""
-            self.collection_selected.emit("")
-            return
-
-        selected = items[0]
-        key = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip()
-        self._selected_collection_key = key
-        idx = self.collection_dropdown.findData(key)
-        if idx >= 0:
-            self._suppress_dropdown_signal = True
-            self.collection_dropdown.setCurrentIndex(idx)
-            self._suppress_dropdown_signal = False
-        self.collection_selected.emit(key)
 
     def _emit_selected_dropdown_collection(self, index: int) -> None:
         if self._suppress_dropdown_signal:
@@ -376,12 +247,4 @@ class ZoteroPanel(QWidget):
             return
 
         self._selected_collection_key = key
-
-        for row in range(self.collection_list.count()):
-            item = self.collection_list.item(row)
-            if not item:
-                continue
-            list_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
-            item.setSelected(bool(key) and list_key == key)
-
         self.collection_selected.emit(key)
