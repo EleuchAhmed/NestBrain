@@ -21,7 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "zotero_library_id": "",
     "zotero_api_key": "",
     "selected_collection_key": "",
-    "ollama_model": "deepseek-ai/deepseek-r1",
+    "nvidia_api_key": "",
     "ollama_host": "https://integrate.api.nvidia.com/v1",
     "zotero_host": "http://localhost:23119",
     "theme": "dark",
@@ -34,7 +34,7 @@ class PipelineConfig:
     zotero_library_id: str
     zotero_api_key: str
     selected_collection_key: str
-    ollama_model: str
+    nvidia_api_key: str
     ollama_host: str
     zotero_host: str
     theme: str
@@ -97,7 +97,7 @@ class PipelineRunner:
             library_id=config.zotero_library_id,
             api_key=config.zotero_api_key,
         )
-        ollama = OllamaClient(host=config.ollama_host, model=config.ollama_model)
+        ollama = OllamaClient(host=config.ollama_host, api_key=config.nvidia_api_key)
         graph_builder = KnowledgeGraphBuilder()
         
         # Delegate to workflow
@@ -237,7 +237,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
         zotero_library_id=str(merged.get("zotero_library_id", "")),
         zotero_api_key=str(merged.get("zotero_api_key", "")),
         selected_collection_key=str(merged.get("selected_collection_key", "")),
-        ollama_model=str(merged.get("ollama_model", "deepseek-ai/deepseek-v3.1")),
+        nvidia_api_key=str(merged.get("nvidia_api_key", "")),
         ollama_host=str(merged.get("ollama_host", "https://integrate.api.nvidia.com/v1")),
         zotero_host=str(merged.get("zotero_host", "http://localhost:23119")),
         theme=str(merged.get("theme", "dark")),
@@ -251,7 +251,7 @@ def save_config(config_path: str | Path, config: PipelineConfig) -> None:
         "zotero_library_id": config.zotero_library_id,
         "zotero_api_key": config.zotero_api_key,
         "selected_collection_key": config.selected_collection_key,
-        "ollama_model": config.ollama_model,
+        "nvidia_api_key": config.nvidia_api_key,
         "ollama_host": config.ollama_host,
         "zotero_host": config.zotero_host,
         "theme": config.theme,

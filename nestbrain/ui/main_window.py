@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from dataclasses import asdict
+from datetime import datetime
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
@@ -34,7 +38,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Nestbrain Settings")
         self.setModal(True)
-        self.resize(520, 260)
+        self.resize(620, 360)
 
         self._config = config
 
@@ -51,19 +55,35 @@ class SettingsDialog(QDialog):
         vault_wrap = QWidget()
         vault_wrap.setLayout(vault_row)
 
-        self.ollama_model_input = QLineEdit(config.ollama_model)
+        self.nvidia_api_key_input = QLineEdit(config.nvidia_api_key)
+        self.nvidia_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.zotero_id_input = QLineEdit(config.zotero_library_id)
         self.zotero_api_key_input = QLineEdit(config.zotero_api_key)
         self.zotero_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.ollama_host_input = QLineEdit(config.ollama_host)
         self.zotero_host_input = QLineEdit(config.zotero_host)
 
+        notebooklm_row = QHBoxLayout()
+        self.notebooklm_auth_btn = QPushButton("Authenticate")
+        self.notebooklm_refresh_btn = QPushButton("Refresh Status")
+        self.notebooklm_status_label = QLabel("")
+        notebooklm_row.addWidget(self.notebooklm_auth_btn)
+        notebooklm_row.addWidget(self.notebooklm_refresh_btn)
+        notebooklm_row.addWidget(self.notebooklm_status_label, 1)
+
+        notebooklm_wrap = QWidget()
+        notebooklm_wrap.setLayout(notebooklm_row)
+
+        self.notebooklm_auth_btn.clicked.connect(self._authenticate_notebooklm)
+        self.notebooklm_refresh_btn.clicked.connect(self._refresh_notebooklm_status)
+
         form.addRow("Vault Path", vault_wrap)
-        form.addRow("LLM Model", self.ollama_model_input)
+        form.addRow("NVIDIA API Key", self.nvidia_api_key_input)
         form.addRow("Zotero Library ID", self.zotero_id_input)
         form.addRow("Zotero API Key", self.zotero_api_key_input)
         form.addRow("LLM Host/Base URL", self.ollama_host_input)
         form.addRow("Zotero Host", self.zotero_host_input)
+        form.addRow("NotebookLM Account", notebooklm_wrap)
 
         button_row = QHBoxLayout()
         cancel_button = QPushButton("Cancel")
@@ -78,17 +98,45 @@ class SettingsDialog(QDialog):
 
         root.addLayout(form)
         root.addLayout(button_row)
+        self._refresh_notebooklm_status()
 
     def _browse_vault(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select Obsidian Vault", self.vault_input.text() or str(Path.home()))
         if folder:
             self.vault_input.setText(folder)
 
+    def _authenticate_notebooklm(self) -> None:
+        launcher = Path(__file__).resolve().parents[2] / "launcher" / "windows" / "start-notebooklm-authentication.bat"
+        if not launcher.exists():
+            QMessageBox.warning(self, "Authentication Launcher Missing", f"Could not find launcher at:\n{launcher}")
+            return
+
+        try:
+            os.startfile(str(launcher))
+            self.notebooklm_status_label.setText("Authentication launched. Complete login, then click Refresh Status.")
+        except Exception as exc:
+            QMessageBox.critical(self, "NotebookLM Authentication Failed", f"Could not launch authentication flow:\n{exc}")
+
+    def _refresh_notebooklm_status(self) -> None:
+        from ..core.notebooklm_auth import get_auth_tokens, _get_auth_file_path
+
+        auth_file = _get_auth_file_path()
+        if not auth_file.exists():
+            self.notebooklm_status_label.setText("Not authenticated")
+            return
+
+        try:
+            asyncio.run(get_auth_tokens())
+            updated_at = datetime.fromtimestamp(auth_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+            self.notebooklm_status_label.setText(f"Authenticated (updated {updated_at})")
+        except Exception:
+            self.notebooklm_status_label.setText("Authentication expired or invalid")
+
     def get_config(self) -> PipelineConfig:
         return replace(
             self._config,
             vault_path=self.vault_input.text().strip(),
-            ollama_model=self.ollama_model_input.text().strip() or "deepseek-ai/deepseek-r1",
+            nvidia_api_key=self.nvidia_api_key_input.text().strip(),
             zotero_library_id=self.zotero_id_input.text().strip(),
             zotero_api_key=self.zotero_api_key_input.text().strip(),
             ollama_host=self.ollama_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",

@@ -28,7 +28,7 @@ async def main():
         host=config.zotero_host
     )
     
-    ollama = OllamaClient(host=config.ollama_host, model=config.ollama_model)
+    ollama = OllamaClient(host=config.ollama_host, api_key=config.nvidia_api_key)
     
     workflow = PipelineWorkflowV2(app_root=app_root)
     

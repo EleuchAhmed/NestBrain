@@ -22,18 +22,24 @@ class OllamaClient:
     The name is Legacy but maintained for backward compatibility.
     """
 
-    def __init__(self, host: str = "https://integrate.api.nvidia.com/v1", model: str = "deepseek-ai/deepseek-r1", timeout: int = 90) -> None:
+    def __init__(
+        self,
+        host: str = "https://integrate.api.nvidia.com/v1",
+        model: str = "deepseek-ai/deepseek-r1",
+        timeout: int = 90,
+        api_key: str = "",
+    ) -> None:
         self.host = host.rstrip("/")
         self.model = model
         self.timeout = timeout
         
         # Ensure the client uses OpenAI-compatible SDK format with Bearer token
-        api_key = os.getenv("NVIDIA_API_KEY", "")
-        if not api_key:
+        resolved_api_key = api_key.strip() or os.getenv("NVIDIA_API_KEY", "")
+        if not resolved_api_key:
             raise RuntimeError("NVIDIA_API_KEY environment variable is not set. Add it to your .env file.")
         self.client = OpenAI(
             base_url=self.host,
-            api_key=api_key
+            api_key=resolved_api_key
         )
 
     def generate(self, prompt: str, model: str | None = None) -> str:
