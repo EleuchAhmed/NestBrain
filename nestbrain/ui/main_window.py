@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import replace
 from dataclasses import asdict
 from datetime import datetime
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QEvent, QThread, Qt, QPoint, QRect
+from PyQt6.QtGui import QMouseEvent, QIcon
 from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -23,8 +25,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..core.app_service import NestbrainAppService
+from ..core.paths import get_distribution_root, get_resource_root
 from ..core.pipeline_runner import PipelineConfig, save_config
-from ..core.zotero_sync import ZoteroSyncClient
 from ..ui.sidebar import TopNavBar
 from ..ui.workspace import Workspace
 from ..ui.zotero_panel import LocalSyncManager
@@ -106,27 +109,34 @@ class SettingsDialog(QDialog):
             self.vault_input.setText(folder)
 
     def _authenticate_notebooklm(self) -> None:
-        launcher = Path(__file__).resolve().parents[2] / "launcher" / "windows" / "start-notebooklm-authentication.bat"
+        launcher = get_distribution_root() / "launcher" / "windows" / "start-notebooklm-authentication.bat"
+
+        override = os.getenv("NOTEBOOKLM_AUTH_LAUNCHER", "").strip()
+        if override:
+            launcher = Path(override).expanduser().resolve()
+
         if not launcher.exists():
             QMessageBox.warning(self, "Authentication Launcher Missing", f"Could not find launcher at:\n{launcher}")
             return
 
         try:
-            os.startfile(str(launcher))
+            if os.name == "nt":
+                os.startfile(str(launcher))
+            else:
+                subprocess.Popen([str(launcher)])
             self.notebooklm_status_label.setText("Authentication launched. Complete login, then click Refresh Status.")
         except Exception as exc:
             QMessageBox.critical(self, "NotebookLM Authentication Failed", f"Could not launch authentication flow:\n{exc}")
 
     def _refresh_notebooklm_status(self) -> None:
-        from ..core.notebooklm_auth import get_auth_tokens, _get_auth_file_path
+        from ..core.notebooklm_auth import _get_auth_file_path, has_cached_auth_tokens
 
         auth_file = _get_auth_file_path()
-        if not auth_file.exists():
+        if not auth_file.exists() or not has_cached_auth_tokens():
             self.notebooklm_status_label.setText("Not authenticated")
             return
 
         try:
-            asyncio.run(get_auth_tokens())
             updated_at = datetime.fromtimestamp(auth_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             self.notebooklm_status_label.setText(f"Authenticated (updated {updated_at})")
         except Exception:
@@ -147,12 +157,34 @@ class SettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, app_root: Path, config_path: Path, config: PipelineConfig) -> None:
         super().__init__()
+        icon_path = app_root / "assets" / "app.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+
+        # Remove OS window frame and title bar for custom frameless design
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # Enable hover-based mouseMoveEvent so resize cursors appear without holding a button
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+        
         self.app_root = app_root
         self.config_path = config_path
         self.config = config
+        self.app_service = NestbrainAppService(app_root)
 
         self.setWindowTitle("Nestbrain | Pipeline")
         self.resize(1440, 900)
+
+        # Resizing/dragging state for pure Qt implementation
+        self._resize_border = 8
+        self._dragging = False
+        self._drag_pos = QPoint()
+        self._resizing_edge = Qt.Edge(0)
+        self._mouse_press_pos = QPoint()
+        self._mouse_press_geometry = QRect()
+
+        # Native Windows resize border for frameless window hit testing
+        self._resize_border = 8
 
         self._pipeline_thread: QThread | None = None
         self._pipeline_worker: PipelineWorker | None = None
@@ -166,8 +198,9 @@ class MainWindow(QMainWindow):
         self._graph_worker: GraphWorker | None = None
         self._selected_collection_key = self.config.selected_collection_key.strip()
 
-        self.top_nav = TopNavBar()
-        self.workspace = Workspace()
+        self.top_nav = TopNavBar(self)
+        self.workspace = Workspace(self)
+
         self.pipeline_panel = self.workspace.pipeline_panel
         self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
 
@@ -186,6 +219,7 @@ class MainWindow(QMainWindow):
         self._apply_dark_theme()
         self._connect_signals()
         self.workspace.update_vault_overview(self.config.vault_path)
+        self._run_startup_health_check()
         self._start_initial_sync()
         self._trigger_startup_scan()
 
@@ -208,6 +242,108 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.statusBar().showMessage(f"Startup scan failed: {exc}", 5000)
 
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            edge = self._resize_edges_for_pos(event.pos())
+            if edge != Qt.Edge(0):
+                self._resizing_edge = edge
+                self._mouse_press_pos = event.globalPosition().toPoint()
+                self._mouse_press_geometry = self.geometry()
+            elif self.top_nav.underMouse() and not self.top_nav.is_utility_area(event.pos()):
+                # Drag window via title bar (if not clicking buttons)
+                self._dragging = True
+                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        pos = event.pos()
+        global_pos = event.globalPosition().toPoint()
+
+        if self._resizing_edge != Qt.Edge(0):
+            diff = global_pos - self._mouse_press_pos
+            new_geo = QRect(self._mouse_press_geometry)
+            
+            if self._resizing_edge & Qt.Edge.LeftEdge:
+                new_geo.setLeft(self._mouse_press_geometry.left() + diff.x())
+            if self._resizing_edge & Qt.Edge.RightEdge:
+                new_geo.setRight(self._mouse_press_geometry.right() + diff.x())
+            if self._resizing_edge & Qt.Edge.TopEdge:
+                new_geo.setTop(self._mouse_press_geometry.top() + diff.y())
+            if self._resizing_edge & Qt.Edge.BottomEdge:
+                new_geo.setBottom(self._mouse_press_geometry.bottom() + diff.y())
+                
+            if new_geo.width() >= self.minimumWidth() and new_geo.height() >= self.minimumHeight():
+                self.setGeometry(new_geo)
+            event.accept()
+        elif self._dragging:
+            self.move(global_pos - self._drag_pos)
+            event.accept()
+        else:
+            # Update cursor for resize preview
+            edges = self._resize_edges_for_pos(pos)
+            cursor = Qt.CursorShape.ArrowCursor
+            if edges in (Qt.Edge.TopEdge, Qt.Edge.BottomEdge):
+                cursor = Qt.CursorShape.SizeVerCursor
+            elif edges in (Qt.Edge.LeftEdge, Qt.Edge.RightEdge):
+                cursor = Qt.CursorShape.SizeHorCursor
+            elif edges in (Qt.Edge.TopEdge | Qt.Edge.LeftEdge, Qt.Edge.BottomEdge | Qt.Edge.RightEdge):
+                cursor = Qt.CursorShape.SizeFDiagCursor
+            elif edges in (Qt.Edge.TopEdge | Qt.Edge.RightEdge, Qt.Edge.BottomEdge | Qt.Edge.LeftEdge):
+                cursor = Qt.CursorShape.SizeBDiagCursor
+            self.setCursor(cursor)
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self._dragging = False
+        self._resizing_edge = Qt.Edge(0)
+        self.unsetCursor()
+        event.accept()
+
+    def _resize_edges_for_pos(self, pos) -> Qt.Edge:
+        """Return edge flags near the frame border for native system resize."""
+        if self.isMaximized():
+            return Qt.Edge(0)
+
+        x = pos.x()
+        y = pos.y()
+        w = self.width()
+        h = self.height()
+        b = self._resize_border
+
+        edges = Qt.Edge(0)
+        if x <= b:
+            edges |= Qt.Edge.LeftEdge
+        elif x >= w - b:
+            edges |= Qt.Edge.RightEdge
+        if y <= b:
+            edges |= Qt.Edge.TopEdge
+        elif y >= h - b:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def toggle_maximize_restore(self) -> None:
+        """Toggle between maximized and restored window state."""
+        if self.isMaximized():
+            self.showNormal()
+            self.top_nav.maximize_button.setToolTip("Maximize")
+            self.top_nav.maximize_button.setText("□")
+        else:
+            self.showMaximized()
+            self.top_nav.maximize_button.setToolTip("Restore")
+            self.top_nav.maximize_button.setText("❐")
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Sync maximize/restore button visuals when window state changes externally
+        (e.g. via taskbar click, Win+Arrow, or double-click title bar)."""
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.isMaximized():
+                self.top_nav.maximize_button.setText("❐")
+                self.top_nav.maximize_button.setToolTip("Restore")
+            else:
+                self.top_nav.maximize_button.setText("□")
+                self.top_nav.maximize_button.setToolTip("Maximize")
+        super().changeEvent(event)
+
     def closeEvent(self, event: Any) -> None:
         save_config(self.config_path, self.config)
         self.sync_manager.stop()
@@ -220,6 +356,9 @@ class MainWindow(QMainWindow):
         self.top_nav.nav_changed.connect(self._on_nav_changed)
         self.top_nav.settings_clicked.connect(self._open_settings)
         self.top_nav.refresh_clicked.connect(self._refresh_all_sections)
+        self.top_nav.minimize_requested.connect(self.showMinimized)
+        self.top_nav.maximize_requested.connect(self.toggle_maximize_restore)
+        self.top_nav.close_requested.connect(self.close)
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
         self.pipeline_panel.collection_selected.connect(self._set_selected_collection)
         self.pipeline_panel.create_collection_requested.connect(self._create_collection)
@@ -228,6 +367,7 @@ class MainWindow(QMainWindow):
         """Refresh Zotero collections, parsed notes, and brain map sections."""
         self.statusBar().showMessage("Refreshing pipeline, notes, and brain map...", 3000)
         self.workspace.update_vault_overview(self.config.vault_path)
+        self._run_startup_health_check()
         self._trigger_startup_scan()
         self._start_collection_sync()
 
@@ -240,6 +380,15 @@ class MainWindow(QMainWindow):
         self.top_nav.set_active(key)
         self.workspace.set_view(mapping.get(key, "pipeline"))
 
+    def _run_startup_health_check(self) -> None:
+        issues = self.app_service.startup_health_check(self.config)
+        if not issues:
+            self.statusBar().showMessage("Startup health check passed", 3000)
+            return
+
+        summary = "; ".join(issues[:3])
+        self.statusBar().showMessage(f"Startup health issues: {summary}", 6000)
+
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self.config, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -247,9 +396,7 @@ class MainWindow(QMainWindow):
             self._selected_collection_key = self.config.selected_collection_key.strip()
             
             # Validate vault path immediately after settings save
-            from ..core.pipeline_runner import PipelineRunner
-            runner = PipelineRunner(self.app_root)
-            validation = runner._validate_vault_path(self.config.vault_path)
+            validation = self.app_service.validate_vault_path(self.config.vault_path)
             
             save_config(self.config_path, self.config)
             self.sync_manager.set_vault_path(self.config.vault_path)
@@ -280,12 +427,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            client = ZoteroSyncClient(
-                host=self.config.zotero_host,
-                library_id=self.config.zotero_library_id,
-                api_key=self.config.zotero_api_key,
-            )
-            created = client.create_collection(collection_name)
+            created = self.app_service.create_collection(self.config, collection_name)
 
             self._selected_collection_key = created.key.strip()
             self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
@@ -358,8 +500,10 @@ class MainWindow(QMainWindow):
         elif visible_errors:
             self.statusBar().showMessage("Pipeline completed with warnings", 6000)
 
-    def _on_pipeline_error(self, message: str) -> None:
-        QMessageBox.critical(self, "Pipeline Error", message)
+    def _on_pipeline_error(self, payload: dict[str, Any]) -> None:
+        message = payload.get("message", "Unknown error")
+        source = payload.get("source", "pipeline")
+        QMessageBox.critical(self, "Pipeline Error", f"{message}\n\nSource: {source}")
 
     def _on_pipeline_finished(self) -> None:
         self.workspace.set_pipeline_running(False)
@@ -398,7 +542,8 @@ class MainWindow(QMainWindow):
         self.pipeline_panel.set_connection_active(bool(self._live_collections))
         self._load_collection_elements(self._selected_collection_key)
 
-    def _on_sync_error(self, message: str) -> None:
+    def _on_sync_error(self, payload: dict[str, Any]) -> None:
+        message = payload.get("message", "Unknown error")
         self.pipeline_panel.set_connection_active(False)
         self.statusBar().showMessage(f"Pipeline sync failed: {message}", 6000)
 
@@ -413,12 +558,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            client = ZoteroSyncClient(
-                host=self.config.zotero_host,
-                library_id=self.config.zotero_library_id,
-                api_key=self.config.zotero_api_key,
-            )
-            items = [asdict(item) for item in client.get_items_for_collection(key)]
+            items = self.app_service.get_collection_items(self.config, key)
             self._collection_items_cache[key] = items
             self.pipeline_panel.update_collection_elements(items)
         except Exception as exc:
@@ -435,7 +575,12 @@ class MainWindow(QMainWindow):
 
         self._graph_thread.started.connect(self._graph_worker.run)
         self._graph_worker.graph_ready.connect(self.workspace.update_graph)
-        self._graph_worker.error.connect(lambda message: self.statusBar().showMessage(f"Graph worker error: {message}", 6000))
+        self._graph_worker.error.connect(
+            lambda payload: self.statusBar().showMessage(
+                f"Graph worker error: {payload.get('message', 'Unknown error')}",
+                6000,
+            )
+        )
         self._graph_worker.finished.connect(self._graph_thread.quit)
         self._graph_worker.finished.connect(self._cleanup_graph_refs)
 
@@ -669,6 +814,30 @@ class MainWindow(QMainWindow):
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
+            }
+            /* Window control buttons — frameless title bar */
+            #WindowMinimizeButton, #WindowMaximizeButton, #WindowCloseButton {
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 6px;
+                color: #a1a1aa;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            #WindowMinimizeButton:hover {
+                background-color: #27272a;
+                color: #fafafa;
+            }
+            #WindowMaximizeButton:hover {
+                background-color: #27272a;
+                color: #fafafa;
+            }
+            #WindowCloseButton:hover {
+                background-color: #dc2626;
+                color: #ffffff;
+            }
+            #WindowCloseButton:pressed {
+                background-color: #b91c1c;
             }
             """
         )

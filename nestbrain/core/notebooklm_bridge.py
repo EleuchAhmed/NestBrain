@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 from .notebooklm_auth import get_auth_tokens
 from notebooklm.client import NotebookLMClient
 from notebooklm.rpc import AudioFormat, AudioLength, VideoFormat, VideoStyle
+
+logger = logging.getLogger(__name__)
 
 
 class NotebookLMBridge:
@@ -45,16 +48,16 @@ class NotebookLMBridge:
 
     async def ingest_text(self, notebook_id: str, title: str, content: str) -> bool:
         try:
-            print(f"DEBUG:NLM_BRIDGE:INGEST_TEXT_START - Ingesting text: {title[:50]}")
+            logger.debug("Ingesting text: %s", title[:50])
             tokens = await get_auth_tokens()
-            print(f"DEBUG:NLM_BRIDGE:INGEST_TOKENS_OK - Got tokens")
+            logger.debug("NotebookLM tokens loaded")
             async with NotebookLMClient(tokens) as client:
-                print(f"DEBUG:NLM_BRIDGE:INGEST_CLIENT_OPEN - About to add_text with wait=True")
+                logger.debug("NotebookLM client opened for ingest_text")
                 await client.sources.add_text(notebook_id=notebook_id, title=title, content=content, wait=True)
-                print(f"DEBUG:NLM_BRIDGE:INGEST_TEXT_COMPLETE - Successfully ingested")
+                logger.debug("Successfully ingested text")
                 return True
         except Exception as e:
-            print(f"DEBUG:NLM_BRIDGE:INGEST_EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
+            logger.warning("Ingest text failed: %s: %s", type(e).__name__, str(e)[:100])
             return False
 
     async def interrogate(self, notebook_id: str, queries: list[str]) -> list[str]:
@@ -78,19 +81,19 @@ class NotebookLMBridge:
 
     async def synthesize(self, notebook_id: str, query: str) -> str:
         try:
-            print(f"DEBUG:NLM_BRIDGE:SYNTHESIZE_START - Getting tokens for notebook {notebook_id}")
+            logger.debug("Synthesizing from notebook %s", notebook_id)
             tokens = await get_auth_tokens()
-            print(f"DEBUG:NLM_BRIDGE:TOKENS_COMPLETE - Creating NotebookLM client")
+            logger.debug("NotebookLM tokens loaded")
             async with NotebookLMClient(tokens) as client:
-                print(f"DEBUG:NLM_BRIDGE:CLIENT_OPEN - Calling chat.ask with query: {query[:80]}")
+                logger.debug("Calling chat.ask with query: %s", query[:80])
                 res = await asyncio.wait_for(
                     client.chat.ask(notebook_id=notebook_id, question=query),
                     timeout=self.ASK_TIMEOUT_SECONDS,
                 )
-                print(f"DEBUG:NLM_BRIDGE:ASK_COMPLETE - Received answer of {len(res.answer)} chars")
+                logger.debug("Received answer of %s chars", len(res.answer))
                 return res.answer
         except Exception as e:
-            print(f"DEBUG:NLM_BRIDGE:EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
+            logger.warning("Synthesize failed: %s: %s", type(e).__name__, str(e)[:100])
             return ""
 
     async def generate_media(self, notebook_id: str, media_type: str) -> dict[str, Any]:

@@ -5,6 +5,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
+from ..core.errors import build_error_payload
 from ..core.knowledge_graph import KnowledgeGraphBuilder
 from ..core.obsidian_parser import ObsidianNote
 from ..core.zotero_sync import ZoteroCollection, ZoteroItem
@@ -12,7 +13,7 @@ from ..core.zotero_sync import ZoteroCollection, ZoteroItem
 
 class GraphWorker(QObject):
     graph_ready = pyqtSignal(dict)
-    error = pyqtSignal(str)
+    error = pyqtSignal(dict)
     finished = pyqtSignal()
 
     def __init__(self, notes_payload: list[dict[str, Any]], collections_payload: list[dict[str, Any]]) -> None:
@@ -67,6 +68,6 @@ class GraphWorker(QObject):
             graph_payload = KnowledgeGraphBuilder().build(notes, collections)
             self.graph_ready.emit(graph_payload)
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(build_error_payload(exc, source="graph_worker"))
         finally:
             self.finished.emit()

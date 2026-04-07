@@ -28,16 +28,14 @@ class QAndALoop:
         Then uses the Researcher model to decide if a follow-up is needed based on the answer.
         Returns a list of Q&A dictionaries.
         """
-        print(f"DEBUG:QA_LOOP:START - Starting Q&A research with {len(taxonomy)} taxonomy questions")
         logger.info(f"Starting Q&A research loop across {len(taxonomy)} distinct taxonomy branches.")
         qa_history = []
 
         for idx, base_question in enumerate(taxonomy):
-            print(f"DEBUG:QA_LOOP:QUESTION_{idx} - Processing base question {idx+1}/{len(taxonomy)}")
             logger.info(f"Querying NotebookLM: {base_question}")
-            print(f"DEBUG:QA_LOOP:NOTEBOOKLM_ASK_START - About to call NotebookLM for: {base_question[:100]}")
+            logger.debug("Calling NotebookLM for question: %s", base_question[:100])
             answer = await self._ask_notebooklm_with_retry(notebook_id, base_question)
-            print(f"DEBUG:QA_LOOP:NOTEBOOKLM_ASK_COMPLETE - Received answer of {len(answer)} chars")
+            logger.debug("Received answer of %s chars", len(answer))
             if self._is_low_signal(answer):
                 refinement = self._refine_question_for_precision(base_question)
                 refined_answer = await self._ask_notebooklm_with_retry(notebook_id, refinement)
@@ -68,9 +66,8 @@ class QAndALoop:
                 })
 
         # Ensure cross-cutting precision across architecture, implementation, and risks.
-        print(f"DEBUG:QA_LOOP:COVERAGE_START - Building coverage questions")
         coverage_questions = self._build_coverage_questions(taxonomy, qa_history)
-        print(f"DEBUG:QA_LOOP:COVERAGE_COUNT - {len(coverage_questions)} coverage questions")
+        logger.debug("Built %s coverage questions", len(coverage_questions))
         for cq in coverage_questions:
             logger.info(f"Executing coverage query: {cq}")
             cq_answer = await self._ask_notebooklm_with_retry(notebook_id, cq)
@@ -83,23 +80,23 @@ class QAndALoop:
                 }
             )
 
-        print(f"DEBUG:QA_LOOP:COMPLETE - Q&A research complete with {len(qa_history)} total Q&A entries")
+        logger.info("Q&A research complete with %s total entries", len(qa_history))
         return qa_history
 
     async def _ask_notebooklm_with_retry(self, notebook_id: str, question: str) -> str:
         """Ask NotebookLM with bounded retries and richer re-prompts for thin responses."""
-        print(f"DEBUG:NOTEBOOKLM_RETRY:START - Asking: {question[:80]}")
+        logger.debug("NotebookLM ask start: %s", question[:80])
         query = question
         for attempt in range(self.MAX_NOTEBOOKLM_RETRIES + 1):
-            print(f"DEBUG:NOTEBOOKLM_RETRY:ATTEMPT_{attempt} - Calling synthesize attempt {attempt+1}")
+            logger.debug("NotebookLM synthesize attempt %s", attempt + 1)
             answer = (await self.nlm.synthesize(notebook_id, query)).strip()
-            print(f"DEBUG:NOTEBOOKLM_RETRY:ATTEMPT_{attempt}_COMPLETE - Received {len(answer)} chars")
+            logger.debug("NotebookLM synthesize attempt %s returned %s chars", attempt + 1, len(answer))
             if not self._is_low_signal(answer):
-                print(f"DEBUG:NOTEBOOKLM_RETRY:SUCCESS - Answer quality acceptable")
+                logger.debug("NotebookLM answer quality acceptable")
                 return answer
             if attempt < self.MAX_NOTEBOOKLM_RETRIES:
                 query = self._refine_question_for_precision(question)
-        print(f"DEBUG:NOTEBOOKLM_RETRY:FALLBACK - Returning answer after max retries")
+        logger.debug("Returning NotebookLM answer after max retries")
         return answer
 
     def _is_low_signal(self, answer: str) -> bool:

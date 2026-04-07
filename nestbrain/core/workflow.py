@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .notebooklm_bridge import NotebookLMBridge
 from .ollama_client import OllamaClient
 from .obsidian_parser import ObsidianParser
+from .paths import get_registry_path
 from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient, ZoteroSyncError
 
@@ -32,7 +33,7 @@ class PipelineWorkflow:
     
     def __init__(self, app_root: str | Path) -> None:
         self.app_root = Path(app_root).resolve()
-        self.registry_path = self.app_root / "pipeline-registry.json"
+        self.registry_path = get_registry_path()
         self.registry = PipelineRegistry(self.registry_path)
         self.notebooklm: NotebookLMBridge | None = None
     

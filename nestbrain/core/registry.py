@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -44,7 +47,7 @@ class PipelineRegistry:
             }
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             # Log corruption but continue with empty registry
-            print(f"Warning: Registry file corrupted, resetting. Error: {e}")
+            logger.warning("Registry file corrupted, resetting: %s", e)
             self.data = {}
 
     def save(self) -> None:

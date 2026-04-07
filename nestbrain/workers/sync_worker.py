@@ -4,13 +4,14 @@ from dataclasses import asdict
 
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
+from ..core.errors import build_error_payload
 from ..core.zotero_sync import ZoteroSyncClient
 
 
 class SyncWorker(QObject):
     collection_updated = pyqtSignal(dict)
     sync_done = pyqtSignal()
-    error = pyqtSignal(str)
+    error = pyqtSignal(dict)
 
     def __init__(self, host: str, library_id: str = "") -> None:
         super().__init__()
@@ -25,6 +26,6 @@ class SyncWorker(QObject):
             for collection in collections:
                 self.collection_updated.emit(asdict(collection))
         except Exception as exc:
-            self.error.emit(str(exc))
+            self.error.emit(build_error_payload(exc, source="sync_worker"))
         finally:
             self.sync_done.emit()

@@ -12,6 +12,7 @@ from typing import Any, Callable
 from .knowledge_graph import KnowledgeGraphBuilder
 from .obsidian_parser import ObsidianParser
 from .ollama_client import OllamaClient
+from .paths import get_config_path, get_runs_dir
 from .zotero_sync import ZoteroSyncClient, ZoteroSyncError
 from .v2_workflow import PipelineWorkflowV2 as PipelineWorkflow
 
@@ -45,8 +46,7 @@ class PipelineRunner:
 
     def __init__(self, app_root: str | Path) -> None:
         self.app_root = Path(app_root).resolve()
-        self.archive_dir = self.app_root / "runs"
-        self.archive_dir.mkdir(parents=True, exist_ok=True)
+        self.archive_dir = get_runs_dir()
         
         # Delegate to workflow coordinator
         self.workflow = PipelineWorkflow(self.app_root)
@@ -202,8 +202,20 @@ class PipelineRunner:
         
         if path in suspicious_roots:
             return {"error": f"Vault path '{path.name}' is too broad. Please set it to your actual Obsidian vault (e.g., 'tech knowledge')."}
+
+        # Ensure the app can write output files into this vault.
+        try:
+            probe = path / ".nestbrain-write-test.tmp"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except Exception as exc:
+            return {"error": f"Vault path is not writable: {exc}"}
         
         return {"error": None, "path": str(path)}
+
+    def validate_vault_path(self, vault_path: str) -> dict[str, Any]:
+        """Public wrapper so UI does not rely on private implementation details."""
+        return self._validate_vault_path(vault_path)
 
     def _emit(self, callback: Callable[[Any], None] | None, payload: Any) -> None:
         """Emit progress or status callback."""
@@ -213,9 +225,8 @@ class PipelineRunner:
 
 def ensure_config(app_root: str | Path) -> Path:
     """Ensure config file exists at expected location."""
-    root = Path(app_root).resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    config_path = root / "config.json"
+    _ = Path(app_root).resolve()  # Kept for backward-compatible call sites.
+    config_path = get_config_path()
 
     if not config_path.exists():
         config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2), encoding="utf-8")

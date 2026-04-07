@@ -8,20 +8,26 @@ from typing import Optional
 from notebooklm.auth import AuthTokens
 from notebooklm.client import NotebookLMClient
 from notebooklm.exceptions import AuthError, NotebookLMError
+from .paths import get_logs_dir
 
-log_dir = Path("pipeline_logs")
-log_dir.mkdir(exist_ok=True)
+log_dir = get_logs_dir()
 
 logger = logging.getLogger("notebooklm_auth")
 logger.setLevel(logging.INFO)
 file_handler = logging.FileHandler(log_dir / "notebooklm_auth.log")
 console_handler = logging.StreamHandler(sys.stderr)
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-logger.addHandler(console_handler)
+if not logger.handlers:
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 
 def _get_auth_file_path() -> Path:
     """Return the path to the cached auth.json file."""
+    override = os.getenv("NOTEBOOKLM_AUTH_FILE", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
     return Path(os.path.expanduser("~/.notebooklm-mcp/auth.json"))
 
 def _load_auth_tokens() -> Optional[AuthTokens]:
@@ -41,6 +47,11 @@ def _load_auth_tokens() -> Optional[AuthTokens]:
     except Exception as e:
         logger.error(f"Failed to parse auth.json: {e}")
         return None
+
+
+def has_cached_auth_tokens() -> bool:
+    """Return True if locally cached auth tokens are present and parseable."""
+    return _load_auth_tokens() is not None
 
 
 async def get_auth_tokens() -> AuthTokens:

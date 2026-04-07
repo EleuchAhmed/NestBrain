@@ -33,9 +33,9 @@ class NvidiaNIMClient:
                                  temperature: float = 0.7, max_tokens: int = 4096,
                                  response_format: Optional[Dict[str, str]] = None) -> str:
         """Execute a chat completion request against a NIM model."""
-        print(f"DEBUG:NVIDIA:CHAT_START - model={model}, max_tokens={max_tokens}, timeout={self.timeout_seconds}s")
+        logger.debug("Chat completion start model=%s max_tokens=%s timeout=%ss", model, max_tokens, self.timeout_seconds)
         url = f"{self.BASE_URL}/chat/completions"
-        print(f"DEBUG:NVIDIA:URL - {url}")
+        logger.debug("NVIDIA URL: %s", url)
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -55,25 +55,21 @@ class NvidiaNIMClient:
             payload["response_format"] = response_format
 
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
-        print(f"DEBUG:NVIDIA:REQUEST_BUILT - About to call urlopen with timeout={self.timeout_seconds}s")
-        print(f"DEBUG:NVIDIA:PAYLOAD_SIZE - {len(json.dumps(payload))} bytes")
-        print(f"DEBUG:NVIDIA:MSG_COUNT - {len(messages)} messages")
-        print(f"DEBUG:NVIDIA:FIRST_MSG - {str(messages[0])[:200] if messages else 'NO MESSAGES'}")
+        logger.debug("Request built timeout=%ss payload_size=%s bytes msg_count=%s", self.timeout_seconds, len(json.dumps(payload)), len(messages))
+        logger.debug("First message preview: %s", str(messages[0])[:200] if messages else 'NO MESSAGES')
         
         try:
-            print(f"DEBUG:NVIDIA:URLOPEN_START - Calling urllib.request.urlopen")
+            logger.debug("Calling urllib.request.urlopen")
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
-                print(f"DEBUG:NVIDIA:RESPONSE_OK - Got response, reading content")
+                logger.debug("Received response, reading content")
                 result = json.loads(response.read().decode('utf-8'))
-                print(f"DEBUG:NVIDIA:PARSE_OK - Parsed JSON response, extracting content")
+                logger.debug("Parsed JSON response")
                 return result['choices'][0]['message']['content']
         except urllib.error.HTTPError as e:
             error_body = e.read().decode('utf-8')
-            print(f"DEBUG:NVIDIA:HTTP_ERROR - {e.code}: {error_body[:100]}")
             logger.error(f"NVIDIA API Error ({e.code}): {error_body}")
             raise Exception(f"NVIDIA API call failed: {error_body}")
         except Exception as e:
-            print(f"DEBUG:NVIDIA:EXCEPTION - {type(e).__name__}: {str(e)[:100]}")
             logger.error(f"Failed to connect to NVIDIA NIM: {e}")
             raise
 

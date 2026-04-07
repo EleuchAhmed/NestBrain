@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 import os
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -44,11 +45,16 @@ class ZoteroSyncClient:
         library_id: str = "",
         api_key: str = "",
         timeout: int = 15,
+        retries: int = 3,
+        backoff_seconds: float = 0.5,
     ) -> None:
         self.host = host.rstrip("/")
         self.library_id = library_id.strip()
         self.api_key = (api_key or os.getenv("ZOTERO_API_KEY", "")).strip()
         self.timeout = timeout
+        self.retries = max(1, retries)
+        self.backoff_seconds = max(0.0, backoff_seconds)
+        self.session = requests.Session()
 
     def check_connection(self) -> bool:
         try:
@@ -204,7 +210,7 @@ class ZoteroSyncClient:
         for path in path_options:
             url = f"{self.host}{path}"
             try:
-                response = requests.get(url, timeout=self.timeout)
+                response = self._request_with_retry("GET", url, timeout=self.timeout)
                 response.raise_for_status()
                 payload = response.json()
                 if isinstance(payload, list):
@@ -226,7 +232,13 @@ class ZoteroSyncClient:
             url = f"{self.host}{path}"
             for payload in payload_options:
                 try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+                    response = self._request_with_retry(
+                        "POST",
+                        url,
+                        json=payload,
+                        headers=headers,
+                        timeout=self.timeout,
+                    )
                     response.raise_for_status()
 
                     if not response.text.strip():
@@ -294,7 +306,13 @@ class ZoteroSyncClient:
         body = [payload]
 
         try:
-            response = requests.post(url, json=body, headers=headers, timeout=self.timeout)
+            response = self._request_with_retry(
+                "POST",
+                url,
+                json=body,
+                headers=headers,
+                timeout=self.timeout,
+            )
             response.raise_for_status()
             if not response.text.strip():
                 return {}
@@ -352,3 +370,19 @@ class ZoteroSyncClient:
 
         add_scope("users/0")
         return scopes
+
+    def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        """Send an HTTP request with simple exponential backoff for transient failures."""
+        last_error: Exception | None = None
+        for attempt in range(self.retries):
+            try:
+                return self.session.request(method=method, url=url, **kwargs)
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt == self.retries - 1:
+                    break
+                sleep_for = self.backoff_seconds * (2 ** attempt)
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+
+        raise ZoteroSyncError(f"Request failed after retries for {url}: {last_error}")
