@@ -4,6 +4,14 @@ Nestbrain is a professional, standalone desktop application built with Python an
 
 By running Nestbrain, you automate the extraction, synthesis, and writing of academic notes directly into your Obsidian vault.
 
+## Vault System
+
+On first launch, Nestbrain creates a single vault named `My Brain` in the app's user-data area. On Windows, that defaults to `%APPDATA%/Nestbrain/My Brain`.
+
+The vault starts with only a root `README.md`. The AI classifier creates subfolders automatically when notes are filed, so the root stays clean and no taxonomy folders are pre-created.
+
+Every filed note gets an AI classification footer and an audit record in `vault_log.jsonl`.
+
 ## Features
 - **Standalone Architecture:** Single-click PyInstaller executable; no Node.js or TypeScript required.
 - **Native Browser Automation:** Uses underlying Playwright libraries combined with native `notebooklm-py` API for NotebookLM synchronization.
@@ -61,6 +69,7 @@ The standalone `.exe` will be located in `scripts\dist\Nestbrain.exe`. You can d
 - **GUI Views**: `nestbrain/views/`
 - **Business Logic**: `nestbrain/core/workflow.py`, `nestbrain/core/pipeline_runner.py`
 - **NotebookLM Wrapper**: `nestbrain/core/notebooklm_bridge.py`
+- **Vault Policy Layer**: `nestbrain/core/vault_manager.py`
 
 ## License
 MIT

@@ -62,6 +62,7 @@
   - `obsidian_parser.py` - scans Markdown notes in the vault
   - `knowledge_graph.py` - builds graph payloads for the UI
   - `note_renderer.py` - renders and merges Obsidian notes
+  - `vault_manager.py` - first-launch vault initialization, classification, filing, and audit logging
   - `registry.py` - collection state persistence
   - `stages/` - decomposed pipeline steps used by `v2_workflow.py`
 
@@ -70,12 +71,12 @@
 - Key files:
   - `notebooklm_stage.py` - create notebook, ingest sources, interrogate, generate media
   - `synthesis_stage.py` - combine NotebookLM output with NVIDIA model synthesis
-  - `notewriter_stage.py` - write or merge notes into the vault
+  - `notewriter_stage.py` - write or merge notes, then hand them to the vault manager for filing
   - `question_planner.py` - generate a research taxonomy
   - `q_and_a_loop.py` - iterative question and answer loop
   - `master_synthesizer.py` - turn research history into a master note and enforce inline first-mention wikilinks
   - `entity_extractor.py` - extract scored IT entities and gate forwarding by confidence
-  - `note_seeder.py` - semantic duplicate check against existing titles/aliases before creating new notes
+  - `note_seeder.py` - semantic duplicate check against existing titles/aliases before creating new notes, then classify and file the generated note
   - `vector_indexer.py` - embed notes and find similar notes
   - `semantic_auditor.py` - rerank similar notes to reduce false positives
   - `connection_annotator.py` - append connection explanations to related notes
@@ -164,8 +165,8 @@
 9. Sources are ingested, interrogated, and synthesized.
 10. Entity extraction emits `{entity, confidence, justification}` and only passes confidence >= 0.75.
 11. Seeder duplicate decisions are logged to `seeder_log.json` and duplicate entities are linked to existing notes.
-12. New entity notes are created only when no semantic duplicate exists.
-13. Notes are written into the Obsidian vault.
+12. New entity notes are created only when no semantic duplicate exists, then the vault manager classifies and files them into `My Brain`.
+13. Notes receive an AI classification footer and an audit line in `vault_log.jsonl`.
 14. Run metadata is saved to `nestbrain/runs/` and the registry is updated.
 
 ### UI Graph Flow

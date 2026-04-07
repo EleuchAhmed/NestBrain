@@ -15,6 +15,7 @@ User
   -> PyQt6 MainWindow
   -> PipelineWorker / SyncWorker / GraphWorker
   -> PipelineRunner
+  -> vault_manager
   -> PipelineWorkflowV2
       -> ZoteroSyncClient
       -> NotebookLMBridge
@@ -35,11 +36,12 @@ MCP client
 
 ### Python Desktop Flow
 1. Config is loaded from `nestbrain/config.json` and environment variables.
-2. The UI reads the vault, Zotero status, and archive history.
-3. When the user starts the pipeline, the worker thread invokes `PipelineRunner.run()`.
-4. `PipelineRunner` validates the vault path and creates service clients.
-5. `PipelineWorkflowV2` syncs Zotero collections and items.
-6. For each collection, the workflow creates or reuses a NotebookLM notebook.
+2. On first launch, `vault_manager.py` creates `My Brain` under the app-data area and writes the vault path back to config.
+3. The UI reads the vault, Zotero status, and archive history.
+4. When the user starts the pipeline, the worker thread invokes `PipelineRunner.run()`.
+5. `PipelineRunner` validates the vault path and creates service clients.
+6. `PipelineWorkflowV2` syncs Zotero collections and items.
+7. For each collection, the workflow creates or reuses a NotebookLM notebook.
 7. Source content is ingested into NotebookLM.
 8. The question planner generates a taxonomy of research prompts.
 9. The Q and A loop interrogates NotebookLM repeatedly.
@@ -52,7 +54,7 @@ MCP client
 16. The vector indexer embeds the note and stores local similarity state.
 17. The semantic auditor filters candidate related notes.
 18. The connection annotator appends semantic linkage text to related notes.
-19. The note writer writes the final Markdown into the vault.
+19. The note writer renders a temporary note, and the vault manager classifies, files, and appends the metadata footer.
 20. The pipeline runner archives summary metadata and the UI refreshes the graph.
 
 ### Graph Flow

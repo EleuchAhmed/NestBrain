@@ -3,6 +3,7 @@ import re
 from typing import List
 from pathlib import Path
 from ..nvidia_client import nvidia_client
+from ..vault_manager import find_note_path
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,8 @@ class ConnectionAnnotator:
 
         for title in target_notes:
             try:
-                safe_title = self._sanitize_filename(title)
-                target_file = self.vault_path / f"{safe_title}.md"
-                if not target_file.exists():
+                target_file = find_note_path(title, self.vault_path)
+                if target_file is None or not target_file.exists():
                     continue
 
                 target_content = target_file.read_text(encoding="utf-8")

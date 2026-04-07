@@ -14,6 +14,7 @@ import logging
 from nestbrain.core.logging import setup_logging
 from nestbrain.core.paths import get_resource_root
 from nestbrain.core.pipeline_runner import ensure_config, load_config
+from nestbrain.core.vault_manager import init_vault
 # from nestbrain.ui.main_window import MainWindow # MOVED INSIDE main() to avoid startup crash
 
 setup_logging()
@@ -38,6 +39,10 @@ def main() -> int:
         logger.info("checking config_path")
         config_path = ensure_config(app_root)
         logger.info("config_path: %s", config_path)
+
+        logger.info("initializing vault")
+        vault_path = init_vault()
+        logger.info("vault initialized at: %s", vault_path)
         
         logger.info("loading config")
         config = load_config(config_path)

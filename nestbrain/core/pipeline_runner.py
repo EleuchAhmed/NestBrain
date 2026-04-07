@@ -19,6 +19,7 @@ from .v2_workflow import PipelineWorkflowV2 as PipelineWorkflow
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "vault_path": "",
+    "vault_initialized": False,
     "zotero_library_id": "",
     "zotero_api_key": "",
     "selected_collection_key": "",
@@ -32,6 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 @dataclass(slots=True)
 class PipelineConfig:
     vault_path: str
+    vault_initialized: bool
     zotero_library_id: str
     zotero_api_key: str
     selected_collection_key: str
@@ -245,6 +247,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
 
     return PipelineConfig(
         vault_path=str(merged.get("vault_path", "")),
+            vault_initialized=bool(merged.get("vault_initialized", False)),
         zotero_library_id=str(merged.get("zotero_library_id", "")),
         zotero_api_key=str(merged.get("zotero_api_key", "")),
         selected_collection_key=str(merged.get("selected_collection_key", "")),
@@ -259,6 +262,7 @@ def save_config(config_path: str | Path, config: PipelineConfig) -> None:
     """Save pipeline configuration to JSON file."""
     payload = {
         "vault_path": config.vault_path,
+        "vault_initialized": config.vault_initialized,
         "zotero_library_id": config.zotero_library_id,
         "zotero_api_key": config.zotero_api_key,
         "selected_collection_key": config.selected_collection_key,

@@ -69,3 +69,8 @@ def get_config_path(app_name: str = APP_NAME) -> Path:
 
 def get_registry_path(app_name: str = APP_NAME) -> Path:
     return get_user_data_dir(app_name) / "pipeline-registry.json"
+
+
+def get_default_vault_root(app_name: str = APP_NAME) -> Path:
+    """Resolve the canonical default vault root used on first launch."""
+    return get_user_data_dir(app_name) / "My Brain"

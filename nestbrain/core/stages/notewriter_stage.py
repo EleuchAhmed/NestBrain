@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
-
-
 from ..note_renderer import (
     SynthesisResult,
     classify_domain,
@@ -13,6 +12,7 @@ from ..note_renderer import (
     merge_into_existing_note,
     slugify,
 )
+from ..vault_manager import classify_and_file
 from ..obsidian_parser import ObsidianNote
 from ..ollama_client import OllamaClient
 
@@ -43,23 +43,29 @@ async def write_note(
     
     domain = classify_domain(collection_name)
     slug = slugify(collection_name)
-    note_path = Path(vault_path) / "20_Concepts" / domain / f"{slug}.md"
-    note_path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_dir = Path(vault_path) / "20_Concepts" / domain
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_note_path = legacy_dir / f"{slug}.md"
     
-    if note_path.exists():
-        # Merge into existing note
-        existing = note_path.read_text(encoding="utf-8")
-        note_content = merge_into_existing_note(
-            existing, items, synthesis, media_paths, items
-        )
+    if legacy_note_path.exists():
+        existing = legacy_note_path.read_text(encoding="utf-8")
+        note_content = merge_into_existing_note(existing, items, synthesis, media_paths, items)
     else:
-        # Create new master note
-        note_content = render_master_note(
-            collection_name, items, synthesis, media_paths
-        )
+        note_content = render_master_note(collection_name, items, synthesis, media_paths)
     
-    note_path.write_text(note_content, encoding="utf-8")
-    return str(note_path.relative_to(vault_path))
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        delete=False,
+        suffix=".md",
+        prefix=f".{slug}.",
+        dir=vault_path,
+    ) as handle:
+        handle.write(note_content)
+        temp_note_path = handle.name
+
+    final_path = Path(classify_and_file(temp_note_path))
+    return str(final_path.relative_to(vault_path))
 
 
 async def enrich_vault_notes(

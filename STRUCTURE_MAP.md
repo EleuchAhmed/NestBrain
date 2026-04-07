@@ -30,6 +30,7 @@
 - Purpose: business logic and service integration.
 - Key files:
   - `pipeline_runner.py` - pipeline entry logic and run archive creation.
+  - `vault_manager.py` - first-launch vault bootstrap, classification, filing, and audit logging.
   - `v2_workflow.py` - active orchestration of the decomposed research pipeline.
   - `workflow.py` - older workflow coordinator, likely legacy.
   - `zotero_sync.py` - Zotero client and data models.
@@ -52,13 +53,13 @@
   - `q_and_a_loop.py` - runs NotebookLM question loops.
   - `master_synthesizer.py` - turns Q and A into a master note.
   - `entity_extractor.py` - extracts linked entities.
-  - `note_seeder.py` - creates or patches entity notes.
+  - `note_seeder.py` - creates or patches entity notes, then files new notes through the vault manager.
   - `vector_indexer.py` - semantic indexing and similarity search.
   - `semantic_auditor.py` - reranking and false-positive reduction.
   - `connection_annotator.py` - writes semantic relationship annotations.
   - `notebooklm_stage.py` - NotebookLM operations for collection processing.
   - `synthesis_stage.py` - synthesis orchestration.
-  - `notewriter_stage.py` - final note write and merge logic.
+  - `notewriter_stage.py` - final note render, merge, and handoff to vault filing.
 - Relationships:
   - `v2_workflow.py` imports these modules directly.
   - The stage split reflects the current research pipeline decomposition.
@@ -91,6 +92,11 @@
 
 ### `nestbrain/assets/`
 - Purpose: static resources and generated media storage used by the desktop app.
+
+## `My Brain`
+- Purpose: user vault root created on first launch inside the app-data area.
+- Relationship:
+  - Starts with only a root `README.md`; taxonomy folders are created on demand by the classifier.
 
 ## `antigravity-notebooklm-mcp/`
 - Purpose: standalone NotebookLM MCP server and tooling.

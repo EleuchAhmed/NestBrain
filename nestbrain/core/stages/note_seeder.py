@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
 from ..note_renderer import classify_domain, slugify
+from ..vault_manager import classify_and_file
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,7 @@ class NoteSeeder:
             )
             write_path.parent.mkdir(parents=True, exist_ok=True)
             write_path.write_text(response_text.strip(), encoding="utf-8")
+            classify_and_file(str(write_path))
             return True
         except Exception as e:
             logger.error(f"Seed Maker failed on term '{term}': {e}")

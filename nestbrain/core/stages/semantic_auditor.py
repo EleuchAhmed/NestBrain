@@ -3,6 +3,7 @@ import re
 from typing import List, Tuple, Dict, Any
 from pathlib import Path
 from ..nvidia_client import nvidia_client
+from ..vault_manager import find_note_path
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,8 @@ class SemanticAuditor:
         for idx, (title, score) in enumerate(semantic_matches):
             try:
                 # Read passage from the vault (limit length to prevent overflowing reranker)
-                safe_title = self._sanitize_filename(title)
-                note_file = self.vault_path / f"{safe_title}.md"
-                if not note_file.exists():
+                note_file = find_note_path(title, self.vault_path)
+                if note_file is None or not note_file.exists():
                     continue
 
                 content = note_file.read_text(encoding="utf-8")

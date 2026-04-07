@@ -11,6 +11,7 @@
 - Keep UI code in `nestbrain/ui/`.
 - Keep background or blocking logic in `nestbrain/workers/`.
 - Keep business logic, integrations, and note processing in `nestbrain/core/`.
+- Keep vault creation, classification, and filing policy in `nestbrain/core/vault_manager.py`.
 - Keep Windows launchers and scripts thin; they should only start the app or delegate to canonical code.
 - Keep the TypeScript MCP server router-based; prefer extending existing tools over adding many new top-level tools.
 - Preserve existing serialization formats unless every reader is updated together.
@@ -21,6 +22,7 @@
 - `workflow.py` is legacy and should not be treated as the primary flow unless the runner is explicitly changed.
 - `pipeline-registry.json` is the persistent collection state store; changing its schema requires migration logic.
 - The Obsidian vault is the primary output sink. Avoid writing arbitrary new file types into the vault root.
+- The `My Brain` vault root should stay clean; taxonomy folders are created by the classifier on demand.
 - The NotebookLM auth cache lives under `~/.notebooklm-mcp/auth.json` for the Node server.
 - The Python bridge uses `notebooklm-py`; the TypeScript server uses a reverse-engineered NotebookLM web client. Keep those responsibilities separate.
 
@@ -36,6 +38,7 @@
 - Add new pipeline behavior as a new stage module in `nestbrain/core/stages/` when possible.
 - Add UI interactions by wiring new signals in `nestbrain/ui/` and dispatching work to a worker thread.
 - Add Zotero-facing behavior through `ZoteroSyncClient` rather than ad hoc HTTP calls in UI code.
+- Add note filing behavior through `vault_manager.py` instead of duplicating path logic in stages.
 - Add new NotebookLM capabilities in the MCP server by extending an existing router action before creating new top-level tools.
 - If you modify note rendering, update both the create and merge paths together.
 - If you modify graph data, update `KnowledgeGraphBuilder` and `BrainMapView` together.

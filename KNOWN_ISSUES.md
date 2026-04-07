@@ -6,11 +6,13 @@
 - `nestbrain/core/note_renderer.py` has a likely slugify bug: the current implementation uses string replacement on the pattern text instead of a real regex replacement.
 
 ## Medium Priority
-- `nestbrain/core/stages/semantic_auditor.py` and `nestbrain/core/stages/connection_annotator.py` assume a note filename of `{title}.md`. Titles containing path separators or characters that need sanitizing can fail or miss the intended file.
-- `nestbrain/core/stages/note_seeder.py` writes entity notes to the vault root, while collection notes go under `20_Concepts/{domain}/`. That storage convention is inconsistent and may be confusing.
 - `nestbrain/core/note_renderer.py` uses brittle string-based merge logic for frontmatter and section updates. It can mis-handle notes whose formatting does not match the expected template.
 - `nestbrain/core/registry.py` stores state in JSON with minimal validation. Corrupted registry files are silently reset.
 - `nestbrain/core/ollama_client.py` is misnamed for what it actually does: it talks to NVIDIA NIM, not a local Ollama server.
+
+## Resolved in Vault Manager
+- `nestbrain/core/stages/semantic_auditor.py` and `nestbrain/core/stages/connection_annotator.py` now use recursive note lookup instead of assuming root-level note filenames.
+- `nestbrain/core/stages/note_seeder.py` now files generated entity notes through the vault manager, so it no longer writes directly to the vault root.
 
 ## Low Priority But Hallucination-Prone
 - `nestbrain/core/workflow.py` is present but appears unused by the active runner. Future agents may incorrectly treat it as canonical if they do not check `pipeline_runner.py`.
