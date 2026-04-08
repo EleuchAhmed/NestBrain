@@ -28,7 +28,7 @@ On Error GoTo 0
 WScript.Sleep 2000
 
 shell.CurrentDirectory = repoPath
-cmd = "cmd /c docker compose --profile desktop up -d"
+cmd = "cmd /c docker compose -f docker/docker-compose.yml --profile desktop up -d"
 shell.Run cmd, 0, False
 
 MsgBox "Research Pipeline started!" & vbCrLf & vbCrLf & _

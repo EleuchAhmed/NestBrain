@@ -6,7 +6,6 @@ Purpose: central, unambiguous startup entry points for local development and des
 
 - Windows full stack launcher: `launcher/windows/start-research-pipeline.vbs`
 - Windows Nestbrain GUI launcher: `launcher/windows/start-nestbrain-desktop.vbs`
-- Windows NotebookLM auth launcher: `launcher/windows/start-notebooklm-authentication.bat`
 
 ## What this folder should contain
 
@@ -21,6 +20,6 @@ Purpose: central, unambiguous startup entry points for local development and des
 
 ## Runtime connection
 
-1. `start-research-pipeline.vbs` starts VcXsrv and then executes `docker compose --profile desktop up -d` from repository root.
-2. Docker starts `watcher`, `pipeline`, and optional `nestbrain` services.
-3. The TypeScript orchestrator runs via `dist/agents/pipeline.js` which delegates to `src/features/pipeline/workflow.ts`.
+1. `start-research-pipeline.vbs` starts VcXsrv and then executes `docker compose -f docker/docker-compose.yml --profile desktop up -d` from repository root.
+2. Docker currently starts the `nestbrain` desktop profile service defined in `docker/docker-compose.yml`.
+3. NotebookLM authentication is launched from the Nestbrain Settings dialog via a Python-native browser flow.

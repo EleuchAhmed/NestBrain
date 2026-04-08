@@ -6,9 +6,9 @@ services:
   nestbrain:
     profiles: ["desktop"]
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.nestbrain
-    env_file: .env
+    env_file: ../.env
     environment:
       - DISPLAY=${DISPLAY:-host.docker.internal:0.0}
       - QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-xcb}
@@ -20,7 +20,7 @@ services:
     working_dir: /workspace
     command: python -m nestbrain.main
     volumes:
-      - ./:/workspace
+      - ../:/workspace
       - ${OBSIDIAN_VAULT_PATH}:/vault:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"

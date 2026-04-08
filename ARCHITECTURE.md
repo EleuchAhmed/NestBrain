@@ -4,8 +4,7 @@
 - Hybrid local application architecture.
 - Primary runtime: GUI desktop orchestrator with background worker threads.
 - Persistence: filesystem-based state, Markdown vault files, JSON registry files, and generated artifact folders.
-- Companion subsystem: a separate Node.js MCP server for direct NotebookLM control.
-- The repository is not a microservice system in the current tree; it is a local app plus one companion server.
+- The repository is not a microservice system in the current tree; it is a local desktop app.
 
 ## Module Interaction Diagram
 
@@ -24,12 +23,6 @@ User
       -> ObsidianParser
       -> NoteSeeder / VectorIndexer / SemanticAuditor / ConnectionAnnotator
   -> Obsidian vault files + pipeline-registry.json + runs/
-
-MCP client
-  -> antigravity-notebooklm-mcp/src/index.ts
-  -> NotebookLMClient
-  -> NotebookLM web app RPCs
-  -> NotebookLM auth cache at ~/.notebooklm-mcp/auth.json
 ```
 
 ## Data Flow
@@ -62,32 +55,27 @@ MCP client
 2. `KnowledgeGraphBuilder` converts notes, references, and semantic links into nodes and edges.
 3. `BrainMapView` renders the graph using NetworkX and Matplotlib.
 
-### MCP Flow
-1. `src/index.ts` initializes the MCP server over stdio.
-2. Auth tokens are loaded from local cache or environment variables.
-3. Tool requests are normalized into router-style actions.
-4. `NotebookLMClient` handles low-level RPC request construction and parsing.
-5. `NotebookOrchestrator` handles multi-step research and artifact workflows.
+### NotebookLM Auth Flow
+1. Settings launches a Python-native browser authentication helper.
+2. Tokens are written to the Nestbrain auth cache path (with legacy fallback support).
+3. `notebooklm_auth.py` validates tokens before notebook operations.
+4. `NotebookLMBridge` uses `notebooklm-py` directly for notebook, source, chat, and artifact operations.
 
 ## Entry Points
 - `nestbrain/main.py` - Python GUI entry point.
 - `launcher/windows/start-application.cmd` - Windows launcher wrapper for the GUI.
 - `launcher/windows/start-nestbrain-desktop.vbs` - Windows launcher that starts the Python app from `.venv`.
 - `launcher/windows/start-research-pipeline.vbs` - Windows launcher that starts VcXsrv and Docker Compose desktop profile.
-- `antigravity-notebooklm-mcp/src/index.ts` - MCP server entry point.
-- `antigravity-notebooklm-mcp/src/browser-auth.ts` - browser-based authentication CLI.
-- `antigravity-notebooklm-mcp/src/auth-cli.ts` - manual token entry CLI.
 
 ## External Integrations
 - Zotero local API and Web API.
 - NotebookLM native client library in Python.
-- NotebookLM web RPCs in TypeScript.
 - NVIDIA NIM chat/completions, embeddings, and ranking endpoints.
 - Obsidian vault filesystem.
 - Docker and VcXsrv for Windows GUI container support.
 
 ## Current Constraints
-- The current `docker-compose.yml` only defines the `nestbrain` desktop service.
+- The current `docker/docker-compose.yml` only defines the `nestbrain` desktop service.
 - Several repository docs mention additional services and directories that are not present in the current tree.
 - The active Python workflow is `v2_workflow.py`; `workflow.py` remains in the tree but is not the path used by `PipelineRunner`.
 - `notebooklm_stage.py` currently handles video generation only; audio is not part of the active stage implementation.
@@ -100,12 +88,6 @@ MCP client
 - Runtime state is mostly on disk.
 - Seeder decisions are persisted in `seeder_log.json` in the Obsidian vault for traceability.
 
-### TypeScript MCP Server
-- Best understood as a companion control plane, not the main desktop app.
-- Uses a router pattern to minimize the number of exposed tools.
-- Talks directly to NotebookLM via reverse-engineered RPC structures.
-
 ## UNKNOWN
 - Exact internal behavior of notebooklm-py is not defined in this repo.
 - Exact NotebookLM RPC schema details beyond the calls used here are UNKNOWN.
-- Whether the Python desktop app and the MCP server are intended to be run together in production is unclear from current source alone.

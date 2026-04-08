@@ -36,6 +36,8 @@ pipeline_logs/
 runs/
 staging/
 config.json
+.nestbrain_index.json
+**/.nestbrain_index.json
 
 # IDEs
 .vscode/

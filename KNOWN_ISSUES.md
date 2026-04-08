@@ -17,12 +17,10 @@
 ## Low Priority But Hallucination-Prone
 - `nestbrain/core/workflow.py` is present but appears unused by the active runner. Future agents may incorrectly treat it as canonical if they do not check `pipeline_runner.py`.
 - Several docs reference folders and wrappers that are not present in the current tree, including `automation/`, `agents/`, `src/`, `mcp-servers/`, and root compatibility scripts. These references should be treated as stale.
-- `CHANGELOG.md` claims the Node.js dependency was fully removed, but the `antigravity-notebooklm-mcp/` subsystem is still present and functional.
-- `launcher/README.md` and `docs/architecture/REPOSITORY_INFORMATION_ARCHITECTURE.md` describe runtime paths that do not match the current `docker-compose.yml`.
+- `launcher/README.md` and `docs/architecture/REPOSITORY_INFORMATION_ARCHITECTURE.md` describe runtime paths that do not match the current `docker/docker-compose.yml`.
 
 ## Incomplete Or Unclear Areas
 - Whether `notebooklm-py` handles all NotebookLM auth and session behavior or hides extra browser automation is not visible from this repo. Internal behavior is UNKNOWN.
-- The exact intended production relationship between the Python desktop app and the Node MCP server is not clearly documented in source.
 - The current Docker configuration does not show the larger multi-service pipeline described by some older notes.
 
 ## Risks

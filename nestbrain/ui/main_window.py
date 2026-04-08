@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..core.app_service import NestbrainAppService
-from ..core.paths import get_distribution_root, get_resource_root
+from ..core.paths import get_resource_root
 from ..core.pipeline_runner import PipelineConfig, save_config
 from ..ui.sidebar import TopNavBar
 from ..ui.workspace import Workspace
@@ -109,21 +109,17 @@ class SettingsDialog(QDialog):
             self.vault_input.setText(folder)
 
     def _authenticate_notebooklm(self) -> None:
-        launcher = get_distribution_root() / "launcher" / "windows" / "start-notebooklm-authentication.bat"
-
-        override = os.getenv("NOTEBOOKLM_AUTH_LAUNCHER", "").strip()
-        if override:
-            launcher = Path(override).expanduser().resolve()
-
-        if not launcher.exists():
-            QMessageBox.warning(self, "Authentication Launcher Missing", f"Could not find launcher at:\n{launcher}")
-            return
-
         try:
-            if os.name == "nt":
-                os.startfile(str(launcher))
+            if getattr(sys, "frozen", False):
+                command = [sys.executable, "--notebooklm-auth"]
             else:
-                subprocess.Popen([str(launcher)])
+                command = [sys.executable, "-m", "nestbrain.core.notebooklm_browser_auth"]
+
+            popen_kwargs: dict[str, Any] = {}
+            if os.name == "nt" and hasattr(subprocess, "CREATE_NEW_CONSOLE"):
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+
+            subprocess.Popen(command, **popen_kwargs)
             self.notebooklm_status_label.setText("Authentication launched. Complete login, then click Refresh Status.")
         except Exception as exc:
             QMessageBox.critical(self, "NotebookLM Authentication Failed", f"Could not launch authentication flow:\n{exc}")

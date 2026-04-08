@@ -8,7 +8,7 @@ from typing import Optional
 from notebooklm.auth import AuthTokens
 from notebooklm.client import NotebookLMClient
 from notebooklm.exceptions import AuthError, NotebookLMError
-from .paths import get_logs_dir
+from .paths import get_logs_dir, get_user_data_dir
 
 log_dir = get_logs_dir()
 
@@ -24,11 +24,52 @@ if not logger.handlers:
 
 
 def _get_auth_file_path() -> Path:
-    """Return the path to the cached auth.json file."""
+    """Return the preferred auth.json path with legacy fallback migration."""
     override = os.getenv("NOTEBOOKLM_AUTH_FILE", "").strip()
     if override:
         return Path(override).expanduser().resolve()
+
+    primary = _get_primary_auth_file_path()
+    legacy = _get_legacy_auth_file_path()
+
+    if primary.exists():
+        return primary
+
+    if legacy.exists():
+        migrated = _try_migrate_legacy_auth(legacy, primary)
+        if migrated:
+            return primary
+        return legacy
+
+    return primary
+
+
+def _get_primary_auth_file_path() -> Path:
+    return get_user_data_dir() / "auth" / "notebooklm_auth.json"
+
+
+def _get_legacy_auth_file_path() -> Path:
     return Path(os.path.expanduser("~/.notebooklm-mcp/auth.json"))
+
+
+def _try_migrate_legacy_auth(legacy_path: Path, primary_path: Path) -> bool:
+    try:
+        primary_path.parent.mkdir(parents=True, exist_ok=True)
+        data = json.loads(legacy_path.read_text(encoding="utf-8"))
+        primary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        logger.info("Migrated NotebookLM auth cache from %s to %s", legacy_path, primary_path)
+        return True
+    except Exception as exc:
+        logger.warning("Auth migration skipped (%s)", exc)
+        return False
+
+
+def save_auth_payload(payload: dict) -> Path:
+    """Persist NotebookLM auth payload to the preferred writable location."""
+    auth_file = _get_auth_file_path()
+    auth_file.parent.mkdir(parents=True, exist_ok=True)
+    auth_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return auth_file
 
 def _load_auth_tokens() -> Optional[AuthTokens]:
     """Load cached auth tokens from the local filesystem."""
@@ -38,9 +79,12 @@ def _load_auth_tokens() -> Optional[AuthTokens]:
         return None
         
     try:
-        data = json.loads(auth_file.read_text())
+        data = json.loads(auth_file.read_text(encoding="utf-8"))
+        cookies = data.get('cookies', {})
+        if not isinstance(cookies, dict):
+            cookies = {}
         return AuthTokens(
-            cookies=data.get('cookies', {}),
+            cookies=cookies,
             csrf_token=data.get('csrf_token', ''),
             session_id=data.get('session_id', '')
         )

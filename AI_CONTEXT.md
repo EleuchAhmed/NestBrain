@@ -2,9 +2,8 @@
 
 ## Project Summary
 - Nestbrain Research Pipeline is a local research-to-knowledge system that turns Zotero sources into Obsidian notes.
-- The current codebase contains two active subsystems:
-  - A Python desktop application in `nestbrain/` that is the primary runtime path.
-  - A TypeScript NotebookLM MCP server in `antigravity-notebooklm-mcp/` that is a separate companion toolchain.
+- The current codebase contains one active primary runtime subsystem:
+  - A Python desktop application in `nestbrain/`.
 - The system is designed to ingest Zotero collections, query NotebookLM, synthesize notes with NVIDIA NIM models, and write structured Markdown into an Obsidian vault.
 
 ## Main Goal
@@ -22,8 +21,6 @@
 - notebooklm-py for native NotebookLM access
 - python-dotenv for environment loading
 - NVIDIA NIM via an OpenAI-compatible client
-- TypeScript and Node.js in the MCP server
-- @modelcontextprotocol/sdk, axios, puppeteer-extra, zod
 - Docker Compose and a Windows launcher layer
 
 ## High-Level Architecture
@@ -32,7 +29,6 @@
 - The orchestration layer lives in `nestbrain/core/`.
 - Background work is isolated in `nestbrain/workers/`.
 - Persistent runtime state is stored in files under the repo or the vault.
-- The TypeScript MCP server is a separate NotebookLM control plane built around stdio tools and reverse-engineered RPC calls.
 
 ## Main Folders
 
@@ -97,25 +93,12 @@
   - `sync_worker.py` - refreshes Zotero collection data
   - `graph_worker.py` - builds graph payloads off the UI thread
 
-### `antigravity-notebooklm-mcp/`
-- Separate Node.js and TypeScript MCP server for NotebookLM.
-- It exposes router-style MCP tools over stdio.
-- Key files:
-  - `src/index.ts` - MCP server entry point and tool routing
-  - `src/api-client.ts` - reverse-engineered NotebookLM web client
-  - `src/orchestrator.ts` - deep research and artifact generation flows
-  - `src/browser-auth.ts` - automated browser authentication helper
-  - `src/auth-cli.ts` - manual auth helper
-  - `src/verify-all.ts` and `src/verify-research.ts` - validation utilities
-- `build/` is generated output, not source.
-
 ### `launcher/windows/`
 - Windows startup entry points only.
 - Key files:
   - `start-application.cmd`
   - `start-nestbrain-desktop.vbs`
   - `start-research-pipeline.vbs`
-  - `start-notebooklm-authentication.bat`
 
 ### `scripts/`
 - Legacy compatibility and packaging helpers.
@@ -126,10 +109,6 @@
 ### `docker/`
 - Docker image definitions.
 - Current repository state only shows `Dockerfile.nestbrain`.
-
-### `docs/`
-- Architecture and repository notes.
-- Important for context, but some documents are stale relative to the current tree.
 
 ### `staging/`
 - Transient NotebookLM response artifacts, HTML captures, and intermediate JSON files.
@@ -149,7 +128,6 @@
 - `nestbrain/core/note_renderer.py` - creates the master Markdown note and merge updates.
 - `nestbrain/core/knowledge_graph.py` - converts notes, references, and semantic links into a graph payload.
 - `nestbrain/ui/main_window.py` - wires pipeline actions, Zotero sync, archive loading, and the brain map.
-- `antigravity-notebooklm-mcp/src/index.ts` - routes MCP tools to NotebookLM client calls.
 
 ## Critical Flows
 
@@ -175,16 +153,16 @@
 3. `BrainMapView` renders the graph in the UI.
 4. Zotero sync updates the collection panel separately.
 
-### NotebookLM MCP Flow
-1. An MCP client connects to `antigravity-notebooklm-mcp/src/index.ts` over stdio.
-2. The server loads auth tokens from `~/.notebooklm-mcp/auth.json` or environment variables.
-3. Tool calls are routed to `NotebookLMClient` and `NotebookOrchestrator`.
-4. The server can list notebooks, manage sources, query notebooks, run deep research, and create artifacts.
+### NotebookLM Auth Flow
+1. The Settings dialog launches a Python-native browser authentication helper.
+2. Tokens are saved to the Nestbrain-managed auth cache path.
+3. Existing legacy `~/.notebooklm-mcp/auth.json` tokens are accepted and auto-migrated when possible.
+4. `NotebookLMBridge` then uses notebooklm-py for notebook and source operations.
 
 ## External Integrations
 - Zotero local API at `http://localhost:23119`.
 - Zotero Web API when collection creation needs remote fallback.
-- NotebookLM via notebooklm-py in Python and a direct web client in TypeScript.
+- NotebookLM via notebooklm-py in Python.
 - NVIDIA NIM at `https://integrate.api.nvidia.com/v1`.
 - Obsidian vault as a filesystem-backed Markdown store.
 - Docker Compose for containerized local runs.
@@ -192,7 +170,7 @@
 
 ## Known Limitations Or Missing Parts
 - The repository contains stale documentation that references folders and wrappers that are not present in the current tree, including `automation/`, `agents/`, `src/`, `mcp-servers/`, and some root wrapper scripts. Mark these as UNKNOWN if encountered elsewhere.
-- The current `docker-compose.yml` only defines the `nestbrain` desktop service; several docs describe a larger service set that is not in the file.
+- The current `docker/docker-compose.yml` only defines the `nestbrain` desktop service; several docs describe a larger service set that is not in the file.
 - `NotebookLMBridge` depends on `notebooklm-py`, but the internal auth and RPC behavior is largely opaque from this repo.
 - The current v2 Python workflow is more complete than the older `workflow.py`, but both files exist.
 - Some pipeline stages are partially implemented or asymmetrical, especially media generation and note enrichment.
@@ -200,7 +178,7 @@
 
 ## AI Agent Quick Start
 - Start with `nestbrain/main.py`, `nestbrain/core/pipeline_runner.py`, and `nestbrain/core/v2_workflow.py`.
-- Treat `nestbrain/` as the primary runtime and `antigravity-notebooklm-mcp/` as a separate companion service.
+- Treat `nestbrain/` as the primary runtime.
 - Keep UI code in `nestbrain/ui/`, background work in `nestbrain/workers/`, and business logic in `nestbrain/core/`.
 - Do not trust older docs blindly; verify current files before changing architecture.
 - Preserve registry, vault path, and auth file conventions unless you are updating every consumer.

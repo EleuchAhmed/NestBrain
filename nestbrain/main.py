@@ -77,6 +77,11 @@ def main() -> int:
         return 1
 
 if __name__ == "__main__":
+    if "--notebooklm-auth" in sys.argv:
+        from nestbrain.core.notebooklm_browser_auth import run_browser_auth_cli
+
+        sys.exit(run_browser_auth_cli())
+
     try:
         logger.info("Application starting...")
         exit_code = main()

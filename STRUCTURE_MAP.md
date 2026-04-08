@@ -4,13 +4,10 @@
 - `README.md` - top-level overview, but some statements are stale relative to the current tree.
 - `CHANGELOG.md` - migration notes and release history.
 - `v2_context.md` - design intent for the v2 multi-layer knowledge graph workflow.
-- `docker-compose.yml` - current Docker entry configuration.
-- `docs/` - architecture documentation.
 - `launcher/` - startup wrappers for Windows.
 - `nestbrain/` - primary Python application.
-- `antigravity-notebooklm-mcp/` - companion TypeScript NotebookLM MCP server.
 - `scripts/` - legacy compatibility and build helpers.
-- `docker/` - Dockerfile definitions.
+- `docker/` - Docker assets including `docker-compose.yml` and Dockerfile definitions.
 - `staging/` - generated NotebookLM artifacts and captures.
 - `pipeline_logs/` - generated logs.
 
@@ -98,28 +95,12 @@
 - Relationship:
   - Starts with only a root `README.md`; taxonomy folders are created on demand by the classifier.
 
-## `antigravity-notebooklm-mcp/`
-- Purpose: standalone NotebookLM MCP server and tooling.
-- Key files:
-  - `src/index.ts` - stdio server and tool router.
-  - `src/api-client.ts` - direct NotebookLM client.
-  - `src/orchestrator.ts` - deep research and artifact orchestration.
-  - `src/browser-auth.ts` - browser login helper.
-  - `src/auth-cli.ts` - manual auth helper.
-  - `src/constants.ts` - RPC identifiers and enums.
-  - `src/verify-all.ts` and `src/verify-research.ts` - validation helpers.
-- Relationships:
-  - `index.ts` instantiates the client and orchestrator.
-  - `orchestrator.ts` depends on `api-client.ts` and `constants.ts`.
-  - `browser-auth.ts` writes auth tokens to the local NotebookLM cache.
-
 ## `launcher/`
 - Purpose: user-facing startup entry points.
 - Key files:
   - `windows/start-application.cmd`
   - `windows/start-nestbrain-desktop.vbs`
   - `windows/start-research-pipeline.vbs`
-  - `windows/start-notebooklm-authentication.bat`
 - Relationships:
   - These wrappers should stay thin and should not hold business logic.
 
@@ -136,13 +117,6 @@
 - Purpose: container definitions.
 - Key file:
   - `Dockerfile.nestbrain`
-
-## `docs/`
-- Purpose: architecture and repository reference docs.
-- Important file:
-  - `architecture/REPOSITORY_INFORMATION_ARCHITECTURE.md`
-- Relationships:
-  - Some docs are stale; verify against source before using them as truth.
 
 ## `staging/`
 - Purpose: transient NotebookLM output files, HTML captures, and JSON artifacts.

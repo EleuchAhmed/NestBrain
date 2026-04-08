@@ -13,7 +13,6 @@
 - Keep business logic, integrations, and note processing in `nestbrain/core/`.
 - Keep vault creation, classification, and filing policy in `nestbrain/core/vault_manager.py`.
 - Keep Windows launchers and scripts thin; they should only start the app or delegate to canonical code.
-- Keep the TypeScript MCP server router-based; prefer extending existing tools over adding many new top-level tools.
 - Preserve existing serialization formats unless every reader is updated together.
 
 ## Architectural Constraints
@@ -23,15 +22,13 @@
 - `pipeline-registry.json` is the persistent collection state store; changing its schema requires migration logic.
 - The Obsidian vault is the primary output sink. Avoid writing arbitrary new file types into the vault root.
 - The `My Brain` vault root should stay clean; taxonomy folders are created by the classifier on demand.
-- The NotebookLM auth cache lives under `~/.notebooklm-mcp/auth.json` for the Node server.
-- The Python bridge uses `notebooklm-py`; the TypeScript server uses a reverse-engineered NotebookLM web client. Keep those responsibilities separate.
+- The NotebookLM auth cache is app-managed, with compatibility fallback for legacy `~/.notebooklm-mcp/auth.json` tokens.
+- The Python bridge uses `notebooklm-py` for NotebookLM operations.
 
 ## What Must Not Be Changed Lightly
 - The registry JSON shape without a migration plan.
 - The vault output path conventions used by note rendering and the graph view.
 - The launcher files’ role as wrappers only.
-- The router-style MCP tool layout in `antigravity-notebooklm-mcp/`.
-- The auth cache location and field expectations used by the MCP server.
 - The current separation between UI, workers, and core logic.
 
 ## Safe Extension Rules
@@ -39,7 +36,6 @@
 - Add UI interactions by wiring new signals in `nestbrain/ui/` and dispatching work to a worker thread.
 - Add Zotero-facing behavior through `ZoteroSyncClient` rather than ad hoc HTTP calls in UI code.
 - Add note filing behavior through `vault_manager.py` instead of duplicating path logic in stages.
-- Add new NotebookLM capabilities in the MCP server by extending an existing router action before creating new top-level tools.
 - If you modify note rendering, update both the create and merge paths together.
 - If you modify graph data, update `KnowledgeGraphBuilder` and `BrainMapView` together.
 
@@ -56,5 +52,4 @@
 ## When Extending the System
 - For Python pipeline changes, start in `nestbrain/core/pipeline_runner.py` and trace into `v2_workflow.py`.
 - For UI changes, start in `nestbrain/ui/main_window.py` and the relevant view module.
-- For MCP changes, start in `antigravity-notebooklm-mcp/src/index.ts` and the client and orchestrator pair.
 - For launch behavior, keep changes in `launcher/windows/` and avoid mixing in runtime logic.
