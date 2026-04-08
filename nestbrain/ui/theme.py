@@ -64,6 +64,13 @@ def get_app_stylesheet() -> str:
         height: 1px;
     }}
 
+    #MainWindowShell,
+    #MainWindowContent,
+    #AmbientNodeBackground {{
+        background: transparent;
+        border: none;
+    }}
+
     QMessageBox,
     QDialog#SettingsDialog {{
         background-color: rgba(26, 14, 46, 0.95);

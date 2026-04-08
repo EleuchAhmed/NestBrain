@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +29,9 @@ from PyQt6.QtWidgets import (
 from ..core.app_service import NestbrainAppService
 from ..core.paths import get_resource_root
 from ..core.pipeline_runner import PipelineConfig, save_config
+from ..ui.ambient_background import AmbientNodeBackground
 from ..ui.sidebar import TopNavBar
+from ..ui.theme import get_app_stylesheet
 from ..ui.workspace import Workspace
 from ..ui.zotero_panel import LocalSyncManager
 from ..workers.graph_worker import GraphWorker
@@ -39,18 +42,48 @@ from ..workers.sync_worker import SyncWorker
 class SettingsDialog(QDialog):
     def __init__(self, config: PipelineConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("SettingsDialog")
         self.setWindowTitle("Nestbrain Settings")
         self.setModal(True)
-        self.resize(620, 360)
+        self.resize(700, 460)
 
         self._config = config
 
         root = QVBoxLayout(self)
+        root.setContentsMargins(22, 20, 22, 18)
+        root.setSpacing(14)
+
+        title = QLabel("Settings")
+        title.setObjectName("SettingsDialogTitle")
+        subtitle = QLabel("Configure your vault, API credentials, and service endpoints.")
+        subtitle.setObjectName("SettingsDialogSectionHint")
+
+        config_card = QWidget()
+        config_card.setObjectName("SettingsSectionCard")
+        config_layout = QVBoxLayout(config_card)
+        config_layout.setContentsMargins(16, 14, 16, 14)
+        config_layout.setSpacing(12)
+
+        config_title = QLabel("Configuration")
+        config_title.setObjectName("SettingsSectionTitle")
+
         form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(12)
+
+        def _field_label(text: str) -> QLabel:
+            label = QLabel(text)
+            label.setObjectName("SettingsFieldLabel")
+            return label
 
         vault_row = QHBoxLayout()
+        vault_row.setSpacing(8)
         self.vault_input = QLineEdit(config.vault_path)
+        self.vault_input.setPlaceholderText("Path to your Obsidian vault")
         browse_btn = QPushButton("Browse")
+        browse_btn.setObjectName("SettingsBrowseButton")
         browse_btn.clicked.connect(self._browse_vault)
         vault_row.addWidget(self.vault_input, 1)
         vault_row.addWidget(browse_btn)
@@ -60,16 +93,25 @@ class SettingsDialog(QDialog):
 
         self.nvidia_api_key_input = QLineEdit(config.nvidia_api_key)
         self.nvidia_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.nvidia_api_key_input.setPlaceholderText("NVIDIA API key")
         self.zotero_id_input = QLineEdit(config.zotero_library_id)
+        self.zotero_id_input.setPlaceholderText("Zotero library ID")
         self.zotero_api_key_input = QLineEdit(config.zotero_api_key)
         self.zotero_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.ollama_host_input = QLineEdit(config.ollama_host)
+        self.zotero_api_key_input.setPlaceholderText("Zotero API key")
+        self.nvidia_host_input = QLineEdit(config.nvidia_host)
+        self.nvidia_host_input.setPlaceholderText("https://integrate.api.nvidia.com/v1")
         self.zotero_host_input = QLineEdit(config.zotero_host)
+        self.zotero_host_input.setPlaceholderText("http://localhost:23119")
 
         notebooklm_row = QHBoxLayout()
+        notebooklm_row.setSpacing(8)
         self.notebooklm_auth_btn = QPushButton("Authenticate")
+        self.notebooklm_auth_btn.setObjectName("SettingsActionButton")
         self.notebooklm_refresh_btn = QPushButton("Refresh Status")
+        self.notebooklm_refresh_btn.setObjectName("SettingsActionButton")
         self.notebooklm_status_label = QLabel("")
+        self.notebooklm_status_label.setObjectName("NotebookLMStatusLabel")
         notebooklm_row.addWidget(self.notebooklm_auth_btn)
         notebooklm_row.addWidget(self.notebooklm_refresh_btn)
         notebooklm_row.addWidget(self.notebooklm_status_label, 1)
@@ -80,17 +122,26 @@ class SettingsDialog(QDialog):
         self.notebooklm_auth_btn.clicked.connect(self._authenticate_notebooklm)
         self.notebooklm_refresh_btn.clicked.connect(self._refresh_notebooklm_status)
 
-        form.addRow("Vault Path", vault_wrap)
-        form.addRow("NVIDIA API Key", self.nvidia_api_key_input)
-        form.addRow("Zotero Library ID", self.zotero_id_input)
-        form.addRow("Zotero API Key", self.zotero_api_key_input)
-        form.addRow("LLM Host/Base URL", self.ollama_host_input)
-        form.addRow("Zotero Host", self.zotero_host_input)
-        form.addRow("NotebookLM Account", notebooklm_wrap)
+        form.addRow(_field_label("Vault Path"), vault_wrap)
+        form.addRow(_field_label("NVIDIA API Key"), self.nvidia_api_key_input)
+        form.addRow(_field_label("Zotero Library ID"), self.zotero_id_input)
+        form.addRow(_field_label("Zotero API Key"), self.zotero_api_key_input)
+        form.addRow(_field_label("NVIDIA NIM Host / Base URL"), self.nvidia_host_input)
+        form.addRow(_field_label("Zotero Host"), self.zotero_host_input)
+        form.addRow(_field_label("NotebookLM Account"), notebooklm_wrap)
+
+        config_layout.addWidget(config_title)
+        config_layout.addLayout(form)
 
         button_row = QHBoxLayout()
+        button_row_wrap = QWidget()
+        button_row_wrap.setObjectName("SettingsButtonRow")
+        button_row_wrap.setLayout(button_row)
+        button_row.setSpacing(8)
         cancel_button = QPushButton("Cancel")
+        cancel_button.setObjectName("SettingsSecondaryButton")
         save_button = QPushButton("Save")
+        save_button.setObjectName("SettingsPrimaryButton")
 
         cancel_button.clicked.connect(self.reject)
         save_button.clicked.connect(self.accept)
@@ -99,8 +150,10 @@ class SettingsDialog(QDialog):
         button_row.addWidget(cancel_button)
         button_row.addWidget(save_button)
 
-        root.addLayout(form)
-        root.addLayout(button_row)
+        root.addWidget(title)
+        root.addWidget(subtitle)
+        root.addWidget(config_card)
+        root.addWidget(button_row_wrap)
         self._refresh_notebooklm_status()
 
     def _browse_vault(self) -> None:
@@ -145,7 +198,7 @@ class SettingsDialog(QDialog):
             nvidia_api_key=self.nvidia_api_key_input.text().strip(),
             zotero_library_id=self.zotero_id_input.text().strip(),
             zotero_api_key=self.zotero_api_key_input.text().strip(),
-            ollama_host=self.ollama_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",
+            nvidia_host=self.nvidia_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",
             zotero_host=self.zotero_host_input.text().strip() or "http://localhost:23119",
         )
 
@@ -153,7 +206,12 @@ class SettingsDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, app_root: Path, config_path: Path, config: PipelineConfig) -> None:
         super().__init__()
-        icon_path = app_root / "assets" / "app.ico"
+        assets_dir = app_root / "assets"
+        icon_path = assets_dir / "app.ico"
+        if not icon_path.exists() and assets_dir.exists():
+            fallback_icons = sorted(assets_dir.glob("*.ico"))
+            icon_path = fallback_icons[0] if fallback_icons else icon_path
+
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
@@ -196,6 +254,7 @@ class MainWindow(QMainWindow):
 
         self.top_nav = TopNavBar(self)
         self.workspace = Workspace(self)
+        self.ambient_background = AmbientNodeBackground()
 
         self.pipeline_panel = self.workspace.pipeline_panel
         self.pipeline_panel.set_selected_collection_key(self._selected_collection_key)
@@ -204,12 +263,22 @@ class MainWindow(QMainWindow):
         self.sync_manager.start()
 
         container = QWidget()
-        root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        container.setObjectName("MainWindowShell")
+        stacked = QStackedLayout(container)
+        stacked.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        stacked.setContentsMargins(0, 0, 0, 0)
+        stacked.setSpacing(0)
 
-        root.addWidget(self.top_nav)
-        root.addWidget(self.workspace, 1)
+        content = QWidget()
+        content.setObjectName("MainWindowContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.top_nav)
+        content_layout.addWidget(self.workspace, 1)
+
+        stacked.addWidget(self.ambient_background)
+        stacked.addWidget(content)
 
         self.setCentralWidget(container)
         self._apply_dark_theme()
@@ -584,259 +653,7 @@ class MainWindow(QMainWindow):
         self._graph_thread.start()
 
     def _apply_dark_theme(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #09090b;
-                color: #fafafa;
-                font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                font-size: 13px;
-            }
-            QMainWindow::separator {
-                background: #27272a;
-                width: 1px;
-                height: 1px;
-            }
-            #TopHeaderBar {
-                background-color: #09090b;
-                border-bottom: 1px solid #27272a;
-            }
-            #TopNavTitle {
-                color: #fafafa;
-                font-size: 14px;
-                font-weight: 800;
-                letter-spacing: 1px;
-            }
-            #TopNavButton, #TopNavUtilityButton {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 8px;
-                min-height: 34px;
-                padding: 0 12px;
-                color: #a1a1aa;
-                text-align: center;
-            }
-            #TopNavButton:hover, #TopNavUtilityButton:hover {
-                background-color: #18181b;
-                color: #fafafa;
-            }
-            #TopNavButton:checked {
-                background-color: #1e1b4b;
-                color: #c4b5fd;
-                border: 1px solid #312e81;
-                font-weight: 600;
-            }
-            #PipelineHeadline {
-                font-size: 42px;
-                font-weight: 800;
-                letter-spacing: -1.5px;
-                line-height: 1;
-                color: #fafafa;
-            }
-            #PipelineSubHeadline {
-                font-size: 18px;
-                font-weight: 400;
-                color: #a1a1aa;
-                line-height: 1.4;
-            }
-            #PipelineStatus,
-            #VaultPathLabel {
-                color: #a1a1aa;
-                font-size: 11px;
-            }
-            #PipelineCollectionInfo,
-            #PipelineCollectionMeta,
-            #PipelineSyncChipSubtitle {
-                color: #a1a1aa;
-                font-size: 11px;
-            }
-            #PipelineStartButton {
-                background-color: #7c3aed;
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 16px;
-                padding: 0 24px;
-            }
-            #PipelineStartButton:hover {
-                background-color: #8b5cf6;
-            }
-            #PipelineStartButton:pressed {
-                background-color: #6d28d9;
-            }
-            #PipelineStartButton:disabled {
-                background-color: #27272a;
-                color: #52525b;
-            }
-            #FeatureCard {
-                background-color: #09090b;
-                border: 1px solid #27272a;
-                border-radius: 12px;
-            }
-            #FeatureCard:hover {
-                border-color: #3f3f46;
-                background-color: #121214;
-            }
-            #FeatureCardTitle {
-                font-weight: 600;
-                font-size: 14px;
-                color: #fafafa;
-            }
-            #FeatureCardDescription {
-                color: #a1a1aa;
-                font-size: 12px;
-            }
-            #PipelinePanel {
-                background-color: #09090b;
-                border: 1px solid #27272a;
-                border-radius: 12px;
-            }
-            #PipelineHeader {
-                font-size: 18px;
-                font-weight: 700;
-                color: #fafafa;
-                letter-spacing: -0.5px;
-            }
-            #PipelineSectionHeader {
-                color: #71717a;
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-            }
-            #PipelineCollectionCard {
-                background-color: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 8px;
-            }
-            #PipelineCollectionCard[selected="true"] {
-                border-color: #7c3aed;
-                background-color: #1e1b4b;
-            }
-            #PipelineCollectionName {
-                font-size: 13px;
-                font-weight: 600;
-                color: #fafafa;
-            }
-            #PipelineCollectionInfo, #PipelineCollectionMeta {
-                color: #a1a1aa;
-                font-size: 11px;
-            }
-            #PipelineSyncChip {
-                background-color: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 8px;
-            }
-            #PipelineSyncChipTitle {
-                color: #c4b5fd;
-                font-size: 11px;
-                font-weight: 700;
-            }
-            #PipelineSyncChipSubtitle {
-                color: #71717a;
-                font-size: 10px;
-            }
-            #PipelineScrollArea {
-                background: #09090b;
-                border: none;
-            }
-            #PipelineProgressBar {
-                border: 1px solid #27272a;
-                border-radius: 6px;
-                background-color: #18181b;
-                text-align: center;
-                height: 8px;
-                color: transparent;
-            }
-            QLineEdit, QListWidget, QTableWidget, QTreeWidget {
-                background-color: #09090b;
-                border: 1px solid #27272a;
-                border-radius: 6px;
-                padding: 8px;
-                color: #fafafa;
-                selection-background-color: #312e81;
-                selection-color: #c4b5fd;
-            }
-            QLineEdit:focus {
-                border-color: #7c3aed;
-            }
-            QHeaderView::section {
-                background-color: #18181b;
-                color: #a1a1aa;
-                border: none;
-                border-bottom: 1px solid #27272a;
-                padding: 8px;
-                font-weight: 600;
-                font-size: 11px;
-                text-transform: uppercase;
-            }
-            QProgressBar {
-                border: 1px solid #27272a;
-                border-radius: 6px;
-                background-color: #18181b;
-                text-align: center;
-                height: 8px;
-                color: transparent;
-            }
-            QProgressBar::chunk {
-                background-color: #7c3aed;
-                border-radius: 5px;
-            }
-            #PanelHeader {
-                font-size: 22px;
-                font-weight: 700;
-                color: #fafafa;
-                letter-spacing: -0.5px;
-            }
-            #NodeDrawer {
-                background-color: #18181b;
-                border: 1px solid #27272a;
-                border-radius: 8px;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: #09090b;
-                width: 8px;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background: #27272a;
-                min-height: 20px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #3f3f46;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            /* Window control buttons — frameless title bar */
-            #WindowMinimizeButton, #WindowMaximizeButton, #WindowCloseButton {
-                background-color: transparent;
-                border: 1px solid transparent;
-                border-radius: 6px;
-                color: #a1a1aa;
-                font-size: 14px;
-                font-weight: 600;
-            }
-            #WindowMinimizeButton:hover {
-                background-color: #27272a;
-                color: #fafafa;
-            }
-            #WindowMaximizeButton:hover {
-                background-color: #27272a;
-                color: #fafafa;
-            }
-            #WindowCloseButton:hover {
-                background-color: #dc2626;
-                color: #ffffff;
-            }
-            #WindowCloseButton:pressed {
-                background-color: #b91c1c;
-            }
-            """
-        )
+        self.setStyleSheet(get_app_stylesheet())
 
     def _stop_thread(self, thread: QThread | None) -> None:
         if thread is None:
