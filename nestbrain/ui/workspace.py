@@ -6,13 +6,14 @@ import shutil
 from typing import Any
 from urllib.parse import quote, unquote
 
-from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QFont, QFontMetrics, QTextBlockFormat, QTextCursor
+from PyQt6.QtCore import QEvent, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices, QFont, QTextBlockFormat, QTextCursor, QTextDocument
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QProgressBar,
@@ -27,7 +28,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .brain_map_view import BrainMapView
+from .brain_map_widget import BrainMapWidget
+from .theme import (
+    SPACING_SCALE,
+    THEME_TOKENS,
+    note_reader_browser_qss,
+    note_reader_document_qss,
+    note_reader_panel_qss,
+    vault_tree_panel_qss,
+)
 from .zotero_panel import PipelinePanel
 
 
@@ -39,11 +48,14 @@ class FeatureCard(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACING_SCALE["sm"])
 
         icon_label = QLabel(icon)
         icon_label.setObjectName("FeatureCardIcon")
-        icon_label.setStyleSheet("font-size: 20px; color: #7c3aed; font-weight: 700;")
+        icon_label.setStyleSheet(
+            "/* theme-harmonized */ "
+            f"font-size: 20px; color: {THEME_TOKENS['accent_primary']}; font-weight: 700;"
+        )
         
         title_label = QLabel(title)
         title_label.setObjectName("FeatureCardTitle")
@@ -67,7 +79,6 @@ class NoteReaderPanel(QWidget):
         super().__init__(parent)
         self.setObjectName("NoteReaderPanel")
         self._current_note_path: Path | None = None
-        self._full_note_path = ""
         self._wikilink_pattern = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]")
 
         root = QVBoxLayout(self)
@@ -81,8 +92,13 @@ class NoteReaderPanel(QWidget):
         top_bar_layout.setContentsMargins(14, 0, 12, 0)
         top_bar_layout.setSpacing(10)
 
-        self.note_path_label = QLabel("No note selected")
-        self.note_path_label.setObjectName("NoteReaderPath")
+        self.note_search_input = QLineEdit()
+        self.note_search_input.setObjectName("NoteResearchBar")
+        self.note_search_input.setPlaceholderText("Research in note... (Press Enter to jump to the next result)")
+        self.note_search_input.setClearButtonEnabled(True)
+        self.note_search_input.setEnabled(False)
+        self.note_search_input.textChanged.connect(self._on_note_search_changed)
+        self.note_search_input.installEventFilter(self)
 
         self.previous_note_button = QPushButton("Previous")
         self.previous_note_button.setObjectName("NoteReaderNavButton")
@@ -96,7 +112,7 @@ class NoteReaderPanel(QWidget):
         self.next_note_button.setEnabled(False)
         self.next_note_button.clicked.connect(self.next_note_requested.emit)
 
-        top_bar_layout.addWidget(self.note_path_label, 1)
+        top_bar_layout.addWidget(self.note_search_input, 1)
         top_bar_layout.addWidget(self.previous_note_button)
         top_bar_layout.addWidget(self.next_note_button)
 
@@ -120,37 +136,8 @@ class NoteReaderPanel(QWidget):
         self.reader.setOpenExternalLinks(False)
         self.reader.anchorClicked.connect(self._on_anchor_clicked)
         self.reader.setFont(QFont("Segoe UI", 15))
-        self.reader.setStyleSheet(
-            "QTextBrowser {"
-            "background-color: #10131d; color: #cfd6ec; border: none;"
-            "font-family: 'Segoe UI', 'Inter', 'SF Pro Display';"
-            "font-size: 16px; line-height: 2.0; padding: 32px 40px; }"
-            "QTextBrowser::selection { background-color: #3f4b7e; color: #f5f5f5; }"
-        )
-        self.reader.document().setDefaultStyleSheet(
-            "body { color: #d7dff0; background: #10131d; font-size: 16px; line-height: 2.0; }"
-            "h1 { font-size: 38px; color: #f0f4ff; margin-top: 40px; margin-bottom: 32px; font-weight: 800; letter-spacing: -0.04em; padding-bottom: 12px; border-bottom: 2px solid #2f3a5a; }"
-            "h2 { font-size: 28px; color: #e8edf9; margin-top: 40px; margin-bottom: 28px; font-weight: 750; letter-spacing: -0.025em; padding-bottom: 8px; border-bottom: 1px solid #29354a; }"
-            "h3 { font-size: 22px; color: #dfe6f5; margin-top: 32px; margin-bottom: 22px; font-weight: 720; letter-spacing: -0.01em; }"
-            "h4 { font-size: 18px; color: #d9e1f3; margin-top: 28px; margin-bottom: 16px; font-weight: 700; }"
-            "p { margin-top: 32px; margin-bottom: 32px; color: #d7dff0; }"
-            "ul, ol { margin-top: 14px; margin-bottom: 28px; padding-left: 36px; }"
-            "ul > li, ol > li { margin-top: 12px; margin-bottom: 14px; }"
-            "li { line-height: 1.9; color: #d7dff0; }"
-            "li > p { margin-top: 0; margin-bottom: 14px; }"
-            "a { color: #7fa3dd; text-decoration: underline; font-weight: 500; }"
-            "a:hover { color: #a8c5ff; text-decoration: underline; }"
-            "strong { color: #f2f5ff; font-weight: 750; }"
-            "code { background: #1e2a42; color: #b8d4ff; padding: 3px 7px; border-radius: 5px; border: 1px solid #3a4a68; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New'; font-size: 14px; }"
-            "pre { background: #0f1725; border: 1px solid #2d3a55; border-radius: 10px; padding: 18px 20px; margin: 28px 0; font-family: 'JetBrains Mono', 'Fira Code', 'Courier New'; line-height: 1.7; }"
-            "pre code { background: transparent; border: none; padding: 0; color: #b8d4ff; font-size: 14px; }"
-            "blockquote { border-left: 4px solid #5f7fcc; margin: 28px 0; padding: 14px 20px; background: #1a2433; color: #d7dff0; border-radius: 8px; font-style: italic; line-height: 1.95; }"
-            "hr { border: none; border-top: 1px solid #3a465a; margin: 36px 0; }"
-            "table { border-collapse: collapse; margin: 28px 0; width: 100%; }"
-            "th, td { border: 1px solid #3a465a; padding: 12px 14px; vertical-align: top; text-align: left; }"
-            "th { background: #1a2433; color: #e8edf9; font-weight: 750; }"
-            "td { color: #d7dff0; }"
-        )
+        self.reader.setStyleSheet(note_reader_browser_qss())
+        self.reader.document().setDefaultStyleSheet(note_reader_document_qss())
         self.reader.document().setDefaultFont(QFont("Segoe UI", 15))
         self.reader.document().setTextWidth(820)
 
@@ -160,33 +147,17 @@ class NoteReaderPanel(QWidget):
 
         root.addWidget(top_bar)
         root.addWidget(self.body_stack, 1)
-        self.setStyleSheet(
-            "#NoteReaderPanel { background-color: #10131d; border-left: 1px solid #253250; }"
-            "#NoteReaderHeader { background-color: #0e121c; border-bottom: 1px solid #253250; }"
-            "#NoteReaderPath { color: #a6b3d8; font-size: 12px; font-weight: 500; }"
-            "#NoteReaderNavButton {"
-            "background-color: #1d2740; color: #d7e1ff; border: 1px solid #2f4068;"
-            "padding: 0 10px; border-radius: 5px; font-size: 11px; font-weight: 600; }"
-            "#NoteReaderNavButton:hover { background-color: #273352; color: #eff4ff; }"
-            "#NoteReaderNavButton:disabled { color: #6f7ea6; background-color: #161d2e; border-color: #26324f; }"
-            "#NoteReaderPlaceholder { background-color: #10131d; }"
-            "#NoteReaderPlaceholderLabel { color: #7080ab; font-size: 14px; }"
-        )
+        self.setStyleSheet(note_reader_panel_qss())
 
     @property
     def current_note_path(self) -> Path | None:
         return self._current_note_path
 
-    def resizeEvent(self, event: Any) -> None:
-        super().resizeEvent(event)
-        self._update_note_path()
-
     def clear_note(self) -> None:
         self._current_note_path = None
-        self._full_note_path = "No note selected"
         self.reader.clear()
         self.body_stack.setCurrentIndex(0)
-        self._update_note_path()
+        self.note_search_input.setEnabled(False)
         self.set_navigation_state(False, False)
 
     def load_note(self, note_path: Path) -> None:
@@ -198,23 +169,67 @@ class NoteReaderPanel(QWidget):
             return
 
         self._current_note_path = note_path
-        self._full_note_path = str(note_path)
         self.reader.setMarkdown(self._transform_wikilinks(content))
         self._apply_block_spacing()
         self.body_stack.setCurrentIndex(1)
-        self._update_note_path()
+        self.note_search_input.setEnabled(True)
+        if self.note_search_input.text().strip():
+            self._search_from_start()
 
     def set_navigation_state(self, has_previous: bool, has_next: bool) -> None:
         self.previous_note_button.setEnabled(has_previous)
         self.next_note_button.setEnabled(has_next)
 
-    def _update_note_path(self) -> None:
-        metrics = QFontMetrics(self.note_path_label.font())
-        available = max(20, self.note_path_label.width())
-        text = self._full_note_path or "No note selected"
-        elided = metrics.elidedText(text, Qt.TextElideMode.ElideMiddle, available)
-        self.note_path_label.setText(elided)
-        self.note_path_label.setToolTip(text)
+    def eventFilter(self, watched: Any, event: Any) -> bool:
+        if watched is self.note_search_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                backward = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                self._find_in_note(backward=backward)
+                return True
+        return super().eventFilter(watched, event)
+
+    def _on_note_search_changed(self, _: str) -> None:
+        if self._current_note_path is None:
+            return
+
+        query = self.note_search_input.text().strip()
+        if not query:
+            cursor = self.reader.textCursor()
+            cursor.clearSelection()
+            self.reader.setTextCursor(cursor)
+            return
+
+        self._search_from_start()
+
+    def _search_from_start(self) -> None:
+        if self._current_note_path is None:
+            return
+
+        cursor = self.reader.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.reader.setTextCursor(cursor)
+        self._find_in_note(backward=False)
+
+    def _find_in_note(self, backward: bool = False) -> bool:
+        if self._current_note_path is None:
+            return False
+
+        query = self.note_search_input.text().strip()
+        if not query:
+            return False
+
+        flags = QTextDocument.FindFlag.FindBackward if backward else QTextDocument.FindFlag(0)
+        found = self.reader.find(query, flags)
+        if found:
+            return True
+
+        cursor = self.reader.textCursor()
+        if backward:
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+        else:
+            cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.reader.setTextCursor(cursor)
+        return self.reader.find(query, flags)
 
     def _transform_wikilinks(self, content: str) -> str:
         def replacer(match: re.Match[str]) -> str:
@@ -295,19 +310,18 @@ class VaultTreePanel(QWidget):
 
         header = QFrame()
         header.setObjectName("VaultTreeHeader")
-        header.setFixedHeight(36)
+        header.setFixedHeight(40)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 0, 10, 0)
-        header_layout.setSpacing(6)
+        header_layout.setContentsMargins(14, 0, 12, 0)
+        header_layout.setSpacing(8)
 
-        title = QLabel("Vault Structure")
-        title.setObjectName("VaultTreeTitle")
-        self.meta_label = QLabel("0 notes")
-        self.meta_label.setObjectName("VaultTreeMeta")
+        self.tree_search_input = QLineEdit()
+        self.tree_search_input.setObjectName("VaultResearchBar")
+        self.tree_search_input.setPlaceholderText("Research notes...")
+        self.tree_search_input.setClearButtonEnabled(True)
+        self.tree_search_input.textChanged.connect(self._apply_tree_filter)
 
-        header_layout.addWidget(title)
-        header_layout.addStretch(1)
-        header_layout.addWidget(self.meta_label)
+        header_layout.addWidget(self.tree_search_input, 1)
 
         self.tree = QTreeWidget()
         self.tree.setObjectName("VaultTreeWidget")
@@ -324,52 +338,7 @@ class VaultTreePanel(QWidget):
         root.addWidget(header)
         root.addWidget(self.tree, 1)
 
-        self.setStyleSheet(
-            "#VaultTreePanel {"
-            "background-color: #11131d;"
-            "border-right: 1px solid #27314b;"
-            "}"
-            "#VaultTreeHeader {"
-            "background-color: #10131c;"
-            "border-bottom: 1px solid #27314b;"
-            "}"
-            "#VaultTreeTitle { color: #cdd6ef; font-size: 12px; font-weight: 600; }"
-            "#VaultTreeMeta { color: #7685ae; font-size: 10px; font-weight: 500; }"
-            "QTreeWidget#VaultTreeWidget {"
-            "background-color: #11131d;"
-            "color: #bcc8e9;"
-            "border: none;"
-            "outline: none;"
-            "padding: 8px 6px 10px 4px;"
-            "show-decoration-selected: 1;"
-            "}"
-            "QTreeWidget#VaultTreeWidget::item {"
-            "height: 26px;"
-            "padding-left: 4px;"
-            "padding-right: 8px;"
-            "border-left: 2px solid transparent;"
-            "border-radius: 0px;"
-            "margin: 0px 2px;"
-            "}"
-            "QTreeWidget#VaultTreeWidget::item:hover {"
-            "background-color: #171d2d;"
-            "color: #d7e1ff;"
-            "}"
-            "QTreeWidget#VaultTreeWidget::item:selected {"
-            "background-color: #1c2439;"
-            "border-left: 2px solid #8ea0e6;"
-            "color: #e4ebff;"
-            "}"
-            "QTreeWidget#VaultTreeWidget::item:selected:active {"
-            "background-color: #1d2840;"
-            "}"
-            "QTreeWidget#VaultTreeWidget:focus { border: none; }"
-            "QTreeView::branch:has-siblings:!adjoins-item { border-left: 1px solid #2b3350; }"
-            "QTreeView::branch:has-siblings:adjoins-item { border-left: 1px solid #2b3350; border-bottom: 1px solid #2b3350; }"
-            "QTreeView::branch:!has-children:!has-siblings:adjoins-item { border-bottom: 1px solid #2b3350; }"
-            "QTreeView::branch:closed:has-children { image: url(:/qt-project.org/styles/commonstyle/images/branch-closed.png); }"
-            "QTreeView::branch:open:has-children { image: url(:/qt-project.org/styles/commonstyle/images/branch-open.png); }"
-        )
+        self.setStyleSheet(vault_tree_panel_qss())
 
     def set_vault_root(self, vault_root: Path | None) -> None:
         self._vault_root = vault_root
@@ -379,14 +348,11 @@ class VaultTreePanel(QWidget):
         self.tree.clear()
         self._path_to_item.clear()
         self._note_index.clear()
-        folder_count = 0
-        note_count = 0
 
         if self._vault_root is None or not self._vault_root.exists() or not self._vault_root.is_dir():
             placeholder = QTreeWidgetItem(["Vault path unavailable"])
             placeholder.setFlags(placeholder.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self.tree.addTopLevelItem(placeholder)
-            self.meta_label.setText("No vault")
             self.note_selected.emit("")
             return
 
@@ -395,8 +361,6 @@ class VaultTreePanel(QWidget):
 
         def build_tree(parent_item: QTreeWidgetItem, folder: Path) -> None:
             nonlocal target_item
-            nonlocal folder_count
-            nonlocal note_count
             try:
                 children = sorted(folder.iterdir(), key=lambda child: (child.is_file(), child.name.lower()))
             except Exception:
@@ -406,7 +370,6 @@ class VaultTreePanel(QWidget):
                 if child.is_dir():
                     if child.name == ".obsidian":
                         continue
-                    folder_count += 1
                     folder_item = self._create_item(child.name, child, "folder")
                     parent_item.addChild(folder_item)
                     self._path_to_item[str(child.resolve())] = folder_item
@@ -414,7 +377,6 @@ class VaultTreePanel(QWidget):
                         target_item = folder_item
                     build_tree(folder_item, child)
                 elif child.is_file() and child.suffix.lower() == ".md":
-                    note_count += 1
                     note_item = self._create_item(child.stem, child, "note")
                     parent_item.addChild(note_item)
                     resolved = child.resolve()
@@ -425,13 +387,42 @@ class VaultTreePanel(QWidget):
 
         build_tree(self.tree.invisibleRootItem(), self._vault_root)
         self.tree.expandToDepth(1)
-        self.meta_label.setText(f"{folder_count} folders, {note_count} notes")
+        self._apply_tree_filter(self.tree_search_input.text())
 
         if target_item is not None:
             self.tree.setCurrentItem(target_item)
         else:
             self.tree.clearSelection()
             self.note_selected.emit("")
+
+    def _apply_tree_filter(self, text: str) -> None:
+        query = text.strip().lower()
+
+        for index in range(self.tree.topLevelItemCount()):
+            top_item = self.tree.topLevelItem(index)
+            if not query:
+                self._set_item_visibility(top_item, True)
+                continue
+            self._filter_tree_item(top_item, query)
+
+    def _set_item_visibility(self, item: QTreeWidgetItem, visible: bool) -> None:
+        item.setHidden(not visible)
+        for child_index in range(item.childCount()):
+            self._set_item_visibility(item.child(child_index), visible)
+
+    def _filter_tree_item(self, item: QTreeWidgetItem, query: str) -> bool:
+        label = item.text(0).lower()
+        path_text = str(item.data(0, self.ROLE_PATH) or "").lower()
+        item_matches = query in label or query in path_text
+
+        has_visible_child = False
+        for child_index in range(item.childCount()):
+            child_visible = self._filter_tree_item(item.child(child_index), query)
+            has_visible_child = has_visible_child or child_visible
+
+        visible = item_matches or has_visible_child
+        item.setHidden(not visible)
+        return visible
 
     def _create_item(self, label: str, path: Path, kind: str, is_root: bool = False) -> QTreeWidgetItem:
         item = QTreeWidgetItem([label])
@@ -718,7 +709,7 @@ class Workspace(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 18, 20, 18)
-        root.setSpacing(10)
+        root.setSpacing(SPACING_SCALE["md"])
 
         self.stacked = QStackedWidget()
         self.view_keys = {
@@ -733,7 +724,8 @@ class Workspace(QWidget):
 
         self.pipeline_view = self._build_pipeline_view()
         self.notes_view = self._build_notes_view()
-        self.brain_map_view = BrainMapView()
+        self.brain_map_view = BrainMapWidget()
+        self.brain_map_view.node_double_clicked.connect(self._on_brain_map_node_double_clicked)
         
         self.stacked.addWidget(self.pipeline_view)
         self.stacked.addWidget(self.notes_view)
@@ -752,7 +744,7 @@ class Workspace(QWidget):
 
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
+        layout.setSpacing(SPACING_SCALE["xl"])
 
         headline = QLabel("Pipeline")
         headline.setObjectName("PipelineHeadline")
@@ -785,13 +777,14 @@ class Workspace(QWidget):
         layout.addWidget(self.pipeline_panel)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.status_label)
-        layout.addSpacing(8)
+        layout.addSpacing(SPACING_SCALE["sm"])
         layout.addWidget(self.start_button)
 
         return scroll
 
     def _build_notes_view(self) -> QWidget:
         widget = QWidget()
+        widget.setObjectName("NotesWorkspaceShell")
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -804,6 +797,7 @@ class Workspace(QWidget):
         self.note_reader_panel.next_note_requested.connect(self._on_next_note_requested)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("NotesMainSplitter")
         splitter.addWidget(self.vault_tree_panel)
         splitter.addWidget(self.note_reader_panel)
         splitter.setChildrenCollapsible(False)
@@ -835,6 +829,53 @@ class Workspace(QWidget):
 
     def update_graph(self, graph_payload: dict[str, Any]) -> None:
         self.brain_map_view.set_graph_data(graph_payload)
+
+    def _open_note_path(self, note_path: Path) -> bool:
+        if not note_path.exists() or not note_path.is_file():
+            QMessageBox.warning(self, "Note Navigation Failed", f"Target note not found: {note_path}")
+            return False
+
+        if not self.vault_tree_panel.select_note_path(note_path):
+            self.vault_tree_panel.refresh_tree(selected_path=note_path)
+
+        self.note_reader_panel.load_note(note_path)
+        self._sync_navigation_state(note_path)
+        self.set_view("notes")
+        return True
+
+    def _resolve_note_path_from_label(self, label: str) -> Path | None:
+        candidate = label.strip()
+        if not candidate:
+            return None
+
+        resolved = self.vault_tree_panel.resolve_note_link(candidate)
+        if resolved is not None:
+            return resolved
+
+        normalized_label = candidate.casefold()
+        stem_label = Path(candidate).stem.casefold()
+
+        for note in self._all_notes:
+            path_value = str(note.get("path", "")).strip()
+            if not path_value:
+                continue
+
+            note_path = Path(path_value)
+            note_title = str(note.get("title", "")).strip()
+            if note_title.casefold() == normalized_label or note_title.casefold() == stem_label:
+                return note_path
+            if note_path.stem.casefold() == normalized_label or note_path.stem.casefold() == stem_label:
+                return note_path
+
+        return None
+
+    def _on_brain_map_node_double_clicked(self, label: str) -> None:
+        note_path = self._resolve_note_path_from_label(label)
+        if note_path is None:
+            QMessageBox.warning(self, "Note Navigation Failed", f"Could not resolve note for node: {label}")
+            return
+
+        self._open_note_path(note_path)
 
     def update_vault_overview(self, vault_path: str) -> None:
         path = Path(vault_path).expanduser() if vault_path else Path()
@@ -872,15 +913,7 @@ class Workspace(QWidget):
                 QMessageBox.warning(self, "Link Navigation Failed", f"Could not resolve or create note for link: {target}")
                 return
 
-        if not target_path.exists() or not target_path.is_file():
-            QMessageBox.warning(self, "Link Navigation Failed", f"Target note not found: {target_path}")
-            return
-
-        if not self.vault_tree_panel.select_note_path(target_path):
-            self.vault_tree_panel.refresh_tree(selected_path=target_path)
-
-        self.note_reader_panel.load_note(target_path)
-        self._sync_navigation_state(target_path)
+        self._open_note_path(target_path)
 
     def _on_previous_note_requested(self) -> None:
         self._navigate_relative(-1)
