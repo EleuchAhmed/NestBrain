@@ -84,13 +84,59 @@ def test_note_seeder_skips_semantic_duplicate_via_alias_and_logs(tmp_path: Path)
     ok = seeder.process_extracted_term("K8s", "context", "Container Orchestration")
 
     assert ok is True
-    assert seeder.get_link_overrides().get("K8s") == "kubernetes"
+    assert seeder.get_link_overrides().get("K8s") == "K8s"
 
     log_path = tmp_path / "seeder_log.json"
     assert log_path.exists()
     records = json.loads(log_path.read_text(encoding="utf-8"))
     assert records[-1]["action"] == "skipped"
     assert records[-1]["matched_note"] == "kubernetes"
+
+
+def test_note_seeder_creates_note_with_alias_frontmatter(tmp_path: Path, monkeypatch):
+    seeder = NoteSeeder(str(tmp_path))
+    seeder.client = StubLLMClient("# Retrieval-Augmented Generation (RAG)\n\nStub content")
+
+    from nestbrain.core.stages import note_seeder as note_seeder_module
+    monkeypatch.setattr(note_seeder_module, "classify_and_file", lambda path: path)
+
+    created = seeder.process_extracted_term(
+        "Retrieval-Augmented Generation (RAG)",
+        "context",
+        "LLM Systems",
+    )
+
+    assert created is True
+    expected_note = (
+        tmp_path
+        / "20_Concepts"
+        / "Systems Design"
+        / "retrieval-augmented-generation-rag.md"
+    )
+    assert expected_note.exists()
+
+    content = expected_note.read_text(encoding="utf-8")
+    assert "aliases: [\"Retrieval-Augmented Generation (RAG)\"]" in content
+
+
+def test_note_seeder_matches_existing_slug_and_backfills_alias(tmp_path: Path):
+    existing_note = tmp_path / "retrieval-augmented-generation-rag.md"
+    existing_note.write_text(
+        "# retrieval-augmented-generation-rag\n\nExisting content\n",
+        encoding="utf-8",
+    )
+
+    seeder = NoteSeeder(str(tmp_path))
+    seeder.client = StubLLMClient("{}", configured=False)
+
+    candidate = "Retrieval-Augmented Generation (RAG)"
+    ok = seeder.process_extracted_term(candidate, "context", "LLM Systems")
+
+    assert ok is True
+    assert seeder.get_link_overrides().get(candidate) == candidate
+
+    updated = existing_note.read_text(encoding="utf-8")
+    assert "aliases: [\"Retrieval-Augmented Generation (RAG)\"]" in updated
 
 
 def test_note_seeder_creates_when_no_match_and_logs(tmp_path: Path, monkeypatch):

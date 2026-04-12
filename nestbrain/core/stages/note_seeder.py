@@ -4,7 +4,8 @@ from pathlib import Path
 import json
 from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
-from ..note_renderer import classify_domain, slugify
+from ..note_renderer import classify_domain
+from ..utils import to_slug
 from ..vault_manager import classify_and_file
 
 logger = logging.getLogger(__name__)
@@ -29,12 +30,7 @@ class NoteSeeder:
         classification_context = f"{term} {subject_title} {master_note_context[:800]}"
         domain = classify_domain(classification_context)
 
-        # Sanitize filename to prevent path traversal and invalid characters
-        safe_term = re.sub(r"[/\\:*?\"<>|]", "-", term)
-        # Replace multiple dashes with single dash
-        safe_term = re.sub(r"-+", "-", safe_term)
-        safe_term = safe_term.strip("-")
-        safe_slug = slugify(safe_term) or safe_term.lower().replace(" ", "-")
+        safe_slug = to_slug(term)
         return self.vault_path / "20_Concepts" / domain / f"{safe_slug}.md"
 
     def process_extracted_term(self, term: str, master_note_context: str, subject_title: str) -> bool:
@@ -49,8 +45,10 @@ class NoteSeeder:
 
         if semantic_result.get("match_found"):
             matched_note = str(semantic_result.get("matched_note") or "").strip()
+            matched_display = str(semantic_result.get("matched_display") or "").strip()
             if matched_note:
-                self.link_overrides[term] = matched_note
+                self._backfill_alias_for_existing(term, existing_notes, matched_note)
+                self.link_overrides[term] = matched_display or term
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -67,6 +65,8 @@ class NoteSeeder:
             # Brand new concept -> Seed Maker
             logger.info(f"Term '{term}' not found in vault. Spawning The Seed Maker.")
             created = self._seed_new_note(term, master_note_context, subject_title, note_path)
+            if created:
+                self.link_overrides[term] = term
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -79,7 +79,8 @@ class NoteSeeder:
             return created
         else:
             logger.info(f"Term '{term}' already exists by resolved path. Skipping mutation for backward safety.")
-            self.link_overrides[term] = note_path.stem
+            self._upsert_alias_on_note(note_path, term)
+            self.link_overrides[term] = term
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -122,8 +123,9 @@ class NoteSeeder:
                 messages=messages,
                 temperature=0.3
             )
+            rendered = self._upsert_aliases_in_markdown(response_text.strip(), [term])
             write_path.parent.mkdir(parents=True, exist_ok=True)
-            write_path.write_text(response_text.strip(), encoding="utf-8")
+            write_path.write_text(rendered, encoding="utf-8")
             classify_and_file(str(write_path))
             return True
         except Exception as e:
@@ -219,15 +221,24 @@ class NoteSeeder:
 
     def _semantic_duplicate_check(self, candidate: str, existing_notes: list[dict[str, str | list[str]]]) -> dict[str, object]:
         normalized_candidate = self._normalize_concept(candidate)
+        candidate_slug = to_slug(candidate)
         for note in existing_notes:
             title = str(note.get("title") or "")
             aliases = [str(a) for a in (note.get("aliases") or [])]
+            if title.lower() == candidate_slug:
+                return {
+                    "match_found": True,
+                    "matched_note": title,
+                    "matched_display": self._preferred_display_alias(aliases, candidate),
+                    "reasoning": "Exact slug match from note filename.",
+                }
             variants = [title] + aliases
             for variant in variants:
                 if self._normalize_concept(variant) == normalized_candidate:
                     return {
                         "match_found": True,
                         "matched_note": title,
+                        "matched_display": self._preferred_display_alias(aliases, candidate),
                         "reasoning": "Exact normalized match from title/alias index.",
                     }
 
@@ -235,6 +246,7 @@ class NoteSeeder:
             return {
                 "match_found": False,
                 "matched_note": None,
+                "matched_display": None,
                 "reasoning": "LLM semantic check unavailable or no existing notes.",
             }
 
@@ -280,9 +292,20 @@ class NoteSeeder:
             match_found = bool(data.get("match_found"))
             matched_note = data.get("matched_note")
             reasoning = str(data.get("reasoning") or "")
+            matched_display = None
+            if matched_note:
+                matched_stem = Path(str(matched_note)).stem.lower()
+                for note in existing_notes:
+                    title = str(note.get("title") or "")
+                    if title.lower() == matched_stem:
+                        aliases = [str(a) for a in (note.get("aliases") or [])]
+                        matched_display = self._preferred_display_alias(aliases, candidate)
+                        matched_note = title
+                        break
             return {
                 "match_found": match_found,
                 "matched_note": str(matched_note).strip() if matched_note else None,
+                "matched_display": matched_display,
                 "reasoning": reasoning or "Semantic check completed.",
             }
         except Exception as exc:
@@ -290,8 +313,100 @@ class NoteSeeder:
             return {
                 "match_found": False,
                 "matched_note": None,
+                "matched_display": None,
                 "reasoning": "Semantic check failed; proceeding as unmatched.",
             }
+
+    def _preferred_display_alias(self, aliases: list[str], fallback: str) -> str:
+        normalized_fallback = self._normalize_concept(fallback)
+        for alias in aliases:
+            if self._normalize_concept(alias) == normalized_fallback:
+                return alias
+        return fallback
+
+    def _backfill_alias_for_existing(self, alias: str, existing_notes: list[dict[str, str | list[str]]], matched_note: str) -> None:
+        for note in existing_notes:
+            title = str(note.get("title") or "")
+            if title != matched_note:
+                continue
+            path = str(note.get("path") or "").strip()
+            if not path:
+                return
+            self._upsert_alias_on_note(Path(path), alias)
+            return
+
+    def _upsert_alias_on_note(self, note_path: Path, alias: str) -> None:
+        try:
+            content = note_path.read_text(encoding="utf-8")
+            updated = self._upsert_aliases_in_markdown(content, [alias])
+            if updated != content:
+                note_path.write_text(updated, encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to backfill alias '%s' in %s: %s", alias, note_path, exc)
+
+    def _upsert_aliases_in_markdown(self, content: str, aliases_to_add: list[str]) -> str:
+        merged_aliases = self._merge_aliases([], aliases_to_add)
+        top_match = re.match(r"(?ms)^---\s*\n(.*?)\n---\s*\n?", content)
+        if not top_match:
+            alias_block = self._format_aliases_line(merged_aliases)
+            body = content.lstrip("\n")
+            return f"---\n{alias_block}\n---\n\n{body}" if body else f"---\n{alias_block}\n---\n"
+
+        frontmatter = top_match.group(1)
+        rest = content[top_match.end():].lstrip("\n")
+        existing_aliases = self._extract_aliases_from_text(frontmatter)
+        merged_aliases = self._merge_aliases(existing_aliases, aliases_to_add)
+
+        clean_frontmatter = re.sub(r"(?im)^aliases\s*:\s*\[(.*?)\]\s*$\n?", "", frontmatter)
+        clean_frontmatter = re.sub(r"(?ims)^aliases\s*:\s*\n(?:\s*-\s*.*\n?)*", "", clean_frontmatter)
+        clean_frontmatter = clean_frontmatter.strip()
+
+        rebuilt_parts: list[str] = []
+        if clean_frontmatter:
+            rebuilt_parts.append(clean_frontmatter)
+        rebuilt_parts.append(self._format_aliases_line(merged_aliases))
+        rebuilt_frontmatter = "\n".join(rebuilt_parts)
+
+        if rest:
+            return f"---\n{rebuilt_frontmatter}\n---\n\n{rest}"
+        return f"---\n{rebuilt_frontmatter}\n---\n"
+
+    def _extract_aliases_from_text(self, frontmatter: str) -> list[str]:
+        aliases: list[str] = []
+
+        inline = re.search(r"(?im)^aliases\s*:\s*\[(.*?)\]\s*$", frontmatter)
+        if inline:
+            for token in inline.group(1).split(","):
+                value = token.strip().strip("\"'")
+                if value:
+                    aliases.append(value)
+
+        block = re.search(r"(?ims)^aliases\s*:\s*\n((?:\s*-\s*.*\n?)*)", frontmatter)
+        if block:
+            for line in block.group(1).splitlines():
+                item = re.sub(r"^\s*-\s*", "", line).strip().strip("\"'")
+                if item:
+                    aliases.append(item)
+
+        return self._merge_aliases([], aliases)
+
+    def _merge_aliases(self, left: list[str], right: list[str]) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for raw in left + right:
+            value = str(raw).strip()
+            if not value:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(value)
+        return merged
+
+    def _format_aliases_line(self, aliases: list[str]) -> str:
+        rendered = [f'"{alias.replace("\\", "\\\\").replace("\"", "\\\"")}"' for alias in aliases]
+        return f"aliases: [{', '.join(rendered)}]"
 
     def _normalize_concept(self, text: str) -> str:
         normalized = text.lower().strip()

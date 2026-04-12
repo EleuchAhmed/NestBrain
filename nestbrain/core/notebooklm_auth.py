@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 from notebooklm.auth import AuthTokens
 from notebooklm.client import NotebookLMClient
-from notebooklm.exceptions import AuthError, NotebookLMError
+from notebooklm.exceptions import AuthError as NotebookLMClientAuthError, NotebookLMError
 from .paths import get_logs_dir, get_user_data_dir
 
 log_dir = get_logs_dir()
@@ -21,6 +21,10 @@ console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
 if not logger.handlers:
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+
+class NotebookLMAuthRequiredError(RuntimeError):
+    """Raised when NotebookLM credentials are missing or no longer valid."""
 
 
 def _get_auth_file_path() -> Path:
@@ -83,10 +87,16 @@ def _load_auth_tokens() -> Optional[AuthTokens]:
         cookies = data.get('cookies', {})
         if not isinstance(cookies, dict):
             cookies = {}
+        cookies = {str(k): str(v) for k, v in cookies.items() if str(k).strip() and str(v).strip()}
+        csrf_token = str(data.get('csrf_token', '')).strip()
+        session_id = str(data.get('session_id', '')).strip()
+        if not cookies or not csrf_token:
+            logger.warning("Auth file is missing required NotebookLM cookie/CSRF data.")
+            return None
         return AuthTokens(
             cookies=cookies,
-            csrf_token=data.get('csrf_token', ''),
-            session_id=data.get('session_id', '')
+            csrf_token=csrf_token,
+            session_id=session_id,
         )
     except Exception as e:
         logger.error(f"Failed to parse auth.json: {e}")
@@ -112,9 +122,9 @@ async def get_auth_tokens() -> AuthTokens:
                 await client.refresh_auth()
             logger.info("Session health check passed.")
             return tokens
-        except (AuthError, NotebookLMError, ValueError) as e:
+        except (NotebookLMClientAuthError, NotebookLMError, ValueError) as e:
             logger.warning(f"Session health check failed: {e}. Cookies may have expired.")
-            raise RuntimeError("NotebookLM Cookies expired. Please re-authenticate.") from e
+            raise NotebookLMAuthRequiredError("NotebookLM authentication expired. Please re-authenticate.") from e
     else:
         logger.warning("No cached tokens available for initialization.")
-        raise RuntimeError("No NotebookLM authentication tokens found. Please authenticate.")
+        raise NotebookLMAuthRequiredError("No NotebookLM authentication tokens found. Please authenticate.")

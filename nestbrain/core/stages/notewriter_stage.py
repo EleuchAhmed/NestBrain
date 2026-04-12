@@ -10,8 +10,8 @@ from ..note_renderer import (
     classify_domain,
     render_master_note,
     merge_into_existing_note,
-    slugify,
 )
+from ..utils import to_slug
 from ..vault_manager import classify_and_file
 from ..obsidian_parser import ObsidianNote
 from ..ollama_client import OllamaClient
@@ -42,7 +42,7 @@ async def write_note(
         status_callback("✍️ Writing note to Obsidian vault...")
     
     domain = classify_domain(collection_name)
-    slug = slugify(collection_name)
+    slug = to_slug(collection_name)
     legacy_dir = Path(vault_path) / "20_Concepts" / domain
     legacy_dir.mkdir(parents=True, exist_ok=True)
     legacy_note_path = legacy_dir / f"{slug}.md"

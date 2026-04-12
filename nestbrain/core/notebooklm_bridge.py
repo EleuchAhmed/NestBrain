@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .notebooklm_auth import get_auth_tokens
+from .notebooklm_auth import NotebookLMAuthRequiredError, get_auth_tokens
 from notebooklm.client import NotebookLMClient
 from notebooklm.rpc import AudioFormat, AudioLength, VideoFormat, VideoStyle
 
@@ -18,22 +18,33 @@ class NotebookLMBridge:
     """Async client interacting with NotebookLM natively."""
 
     ASK_TIMEOUT_SECONDS = 90.0
+    INGEST_TIMEOUT_SECONDS = 300.0
 
     def __init__(self, app_root: str | Path):
         self.app_root = Path(app_root).resolve()
 
     async def create_notebook(self, title: str) -> str:
-        tokens = await get_auth_tokens()
-        async with NotebookLMClient(tokens) as client:
-            notebook = await client.notebooks.create(title=title)
-            return notebook.id
+        try:
+            tokens = await get_auth_tokens()
+            async with NotebookLMClient(tokens) as client:
+                notebook = await client.notebooks.create(title=title)
+                return notebook.id
+        except NotebookLMAuthRequiredError:
+            raise
+        except Exception as exc:
+            logger.warning("Create notebook failed: %s: %s", type(exc).__name__, str(exc)[:100])
+            raise RuntimeError("NotebookLM notebook creation failed.") from exc
 
     async def ingest_file(self, notebook_id: str, path: str) -> bool:
         try:
             tokens = await get_auth_tokens()
             async with NotebookLMClient(tokens) as client:
-                await client.sources.add_file(notebook_id=notebook_id, file_path=path, wait=True)
-                return True
+                return await self._wait_for_ingest(
+                    client.sources.add_file(notebook_id=notebook_id, file_path=path, wait=True),
+                    f"file ingest for notebook {notebook_id}",
+                )
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception:
             return False
 
@@ -41,8 +52,12 @@ class NotebookLMBridge:
         try:
             tokens = await get_auth_tokens()
             async with NotebookLMClient(tokens) as client:
-                await client.sources.add_url(notebook_id=notebook_id, url=url, wait=True)
-                return True
+                return await self._wait_for_ingest(
+                    client.sources.add_url(notebook_id=notebook_id, url=url, wait=True),
+                    f"url ingest for notebook {notebook_id}",
+                )
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception:
             return False
 
@@ -53,12 +68,40 @@ class NotebookLMBridge:
             logger.debug("NotebookLM tokens loaded")
             async with NotebookLMClient(tokens) as client:
                 logger.debug("NotebookLM client opened for ingest_text")
-                await client.sources.add_text(notebook_id=notebook_id, title=title, content=content, wait=True)
-                logger.debug("Successfully ingested text")
-                return True
+                return await self._wait_for_ingest(
+                    client.sources.add_text(
+                        notebook_id=notebook_id,
+                        title=title,
+                        content=content,
+                        wait=True,
+                    ),
+                    f"text ingest for {title[:50]}",
+                )
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception as e:
             logger.warning("Ingest text failed: %s: %s", type(e).__name__, str(e)[:100])
             return False
+
+    async def _wait_for_ingest(self, awaitable: Any, operation: str) -> bool:
+        try:
+            await asyncio.wait_for(awaitable, timeout=self.INGEST_TIMEOUT_SECONDS)
+            logger.debug("NotebookLM %s completed", operation)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning(
+                "NotebookLM %s timed out after %.0f seconds",
+                operation,
+                self.INGEST_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.warning(
+                "NotebookLM %s failed: %s: %s",
+                operation,
+                type(exc).__name__,
+                str(exc)[:100],
+            )
+        return False
 
     async def interrogate(self, notebook_id: str, queries: list[str]) -> list[str]:
         try:
@@ -76,6 +119,8 @@ class NotebookLMBridge:
                         responses.append(f"### Query: {query}\n\nWarning: {str(e)}")
                     await asyncio.sleep(1)
             return responses
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception:
             return []
 
@@ -92,6 +137,8 @@ class NotebookLMBridge:
                 )
                 logger.debug("Received answer of %s chars", len(res.answer))
                 return res.answer
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception as e:
             logger.warning("Synthesize failed: %s: %s", type(e).__name__, str(e)[:100])
             return ""
@@ -136,6 +183,8 @@ class NotebookLMBridge:
                         "url": getattr(artifact, "url", None),
                     }
                 return {"status": "failed", "error": result.error or "Generation timed out"}
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception:
             return {"status": "error"}
 
@@ -148,5 +197,7 @@ class NotebookLMBridge:
                 else:
                     saved_path = await client.artifacts.download_video(notebook_id, output_path, artifact_id=artifact_id)
                 return saved_path
+        except NotebookLMAuthRequiredError:
+            raise
         except Exception:
             return ""

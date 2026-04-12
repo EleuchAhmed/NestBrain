@@ -238,31 +238,6 @@ def get_app_stylesheet() -> str:
         background-color: rgba(216, 191, 255, 0.12);
     }}
 
-    #WindowMinimizeButton,
-    #WindowMaximizeButton,
-    #WindowCloseButton {{
-        min-width: {SPACING_EXTENDED['button_height_small']}px;
-        max-width: {SPACING_EXTENDED['button_height_small']}px;
-        min-height: {SPACING_EXTENDED['button_height_small']}px;
-        max-height: {SPACING_EXTENDED['button_height_small']}px;
-        padding: 0;
-        background-color: rgba(255, 255, 255, 0.06);
-        border: none;
-        border-radius: {RADIUS_SCALE['pill']}px;
-        color: {t['text_muted']};
-    }}
-
-    #WindowMinimizeButton:hover,
-    #WindowMaximizeButton:hover {{
-        background-color: rgba(216, 191, 255, 0.1);
-        color: {t['text_primary']};
-    }}
-
-    #WindowCloseButton:hover {{
-        background-color: rgba(255, 179, 193, 0.15);
-        color: {t['text_primary']};
-    }}
-
     #PipelineHeadline {{
         font-size: 32px;
         font-weight: 700;

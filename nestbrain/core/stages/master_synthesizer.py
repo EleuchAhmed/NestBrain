@@ -232,6 +232,7 @@ class MasterSynthesizer:
             return text
 
         alias_map = alias_map or {}
+        normalized_alias_map = {str(k).strip().lower(): str(v).strip() for k, v in alias_map.items() if str(k).strip() and str(v).strip()}
         linked_targets: set[str] = set(
             m.group(1).strip().lower()
             for m in re.finditer(r"\[\[([^\]|#]+)(?:#[^\]]+)?(?:\|[^\]]+)?\]\]", text)
@@ -241,7 +242,7 @@ class MasterSynthesizer:
             mention = (term or "").strip()
             if not mention:
                 continue
-            target = (alias_map.get(mention) or mention).strip()
+            target = (normalized_alias_map.get(mention.lower()) or mention).strip()
             if not target:
                 continue
             if target.lower() in linked_targets:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
+from PyQt6.QtCore import QTimer, QtMsgType, qInstallMessageHandler
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QFont, QIcon
 from dotenv import load_dotenv
@@ -19,6 +19,16 @@ from nestbrain.core.vault_manager import init_vault
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def _ensure_window_visible(window: object) -> None:
+    """Ensure the main window is restored and brought to front on startup."""
+    if hasattr(window, "isMinimized") and window.isMinimized():
+        window.showNormal()
+    if hasattr(window, "raise_"):
+        window.raise_()
+    if hasattr(window, "activateWindow"):
+        window.activateWindow()
 
 def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> None:
     # Suppress a known non-fatal Qt warning while keeping other diagnostics.
@@ -67,6 +77,9 @@ def main() -> int:
         
         logger.info("showing window")
         window.show()
+        _ensure_window_visible(window)
+        # Run a deferred visibility pass once the event queue starts.
+        QTimer.singleShot(0, lambda: _ensure_window_visible(window))
         logger.info("entering app.exec()")
         
         res = app.exec()

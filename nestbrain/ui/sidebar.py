@@ -80,7 +80,6 @@ class TopNavBar(QWidget):
         self.refresh_button.setObjectName("TopNavUtilityButton")
         self.refresh_button.setMinimumHeight(34)
         self.refresh_button.clicked.connect(self.refresh_clicked.emit)
-
         utility_row.addWidget(self.refresh_button)
         utility_row.addWidget(self.settings_button)
 

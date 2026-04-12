@@ -59,7 +59,7 @@ class NestbrainAppService:
         if not auth_file.exists():
             issues.append("NotebookLM auth cache is missing.")
         elif not has_cached_auth_tokens():
-            issues.append("NotebookLM auth cache could not be parsed.")
+            issues.append("NotebookLM auth cache is invalid or incomplete. Please re-authenticate.")
 
         return issues
 

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any
+from .utils import to_slug
 
 
 @dataclass(slots=True)
@@ -22,15 +22,7 @@ class SynthesisResult:
 
 def slugify(text: str) -> str:
     """Convert text to URL-safe slug."""
-    # First convert to lowercase and remove non-alphanumeric/space characters
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\- ]", "", text)
-    # Replace multiple spaces with single hyphen
-    text = re.sub(r" +", "-", text)
-    # Replace multiple hyphens with single hyphen
-    text = re.sub(r"-+", "-", text)
-    # Strip leading/trailing hyphens
-    return text.strip("-")
+    return to_slug(text)
 
 
 def classify_domain(collection_name: str) -> str:
@@ -118,8 +110,14 @@ def render_master_note(
 | {now.split("T")[0]} | {", ".join(item.get('key', 'N/A') for item in items)} | Initial note creation with {len(items)} sources |
 """
     
+    frontmatter = f"""---
+aliases: [\"{collection_name}\"]
+---
+"""
+
     # Full note
-    note = f"""{synthesis.academic_synthesis}
+    note = f"""{frontmatter}
+{synthesis.academic_synthesis}
 
 # {collection_name} — Master Knowledge Note
 

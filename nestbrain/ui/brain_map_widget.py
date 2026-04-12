@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import math
 import os
 from pathlib import Path
@@ -8,7 +7,7 @@ from typing import Any
 
 import networkx as nx
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QWheelEvent
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QResizeEvent, QWheelEvent
 from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QGraphicsEllipseItem,
@@ -20,26 +19,63 @@ from PyQt6.QtWidgets import (
     QGraphicsView,
 )
 
+from .brain_map_colors import CATEGORY_COLORS, UNCATEGORIZED_CATEGORY
+
 
 class CategoryColorManager:
-    CATEGORY_PALETTE = [
-        "#6c63ff",  # purple
-        "#ff6584",  # pink
-        "#43b89c",  # teal
-        "#f7b731",  # amber
-        "#4fc3f7",  # sky blue
-        "#ff7043",  # deep orange
-        "#ab47bc",  # violet
-        "#66bb6a",  # green
-        "#ef5350",  # red
-        "#26c6da",  # cyan
-    ]
+    def _resolve_color(self, category: str) -> str:
+        normalized = (category or UNCATEGORIZED_CATEGORY).strip()
+        if normalized in CATEGORY_COLORS:
+            return CATEGORY_COLORS[normalized]
+
+        normalized_key = normalized.casefold()
+        for candidate, color in CATEGORY_COLORS.items():
+            if candidate.casefold() == normalized_key:
+                return color
+
+        return CATEGORY_COLORS[UNCATEGORIZED_CATEGORY]
 
     def get_color(self, folder_name: str) -> QColor:
-        key = (folder_name or "uncategorized").strip().lower()
-        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-        palette_index = int(digest[:8], 16) % len(self.CATEGORY_PALETTE)
-        return QColor(self.CATEGORY_PALETTE[palette_index])
+        return QColor(self._resolve_color(folder_name))
+
+
+def _resolve_note_path(payload: dict[str, Any]) -> str:
+    for key in ("path", "note_path"):
+        value = payload.get(key)
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("path", "note_path"):
+            value = metadata.get(key)
+            if value is not None:
+                text = str(value).strip()
+                if text:
+                    return text
+
+    return ""
+
+
+def _extract_category_from_note_path(note_path: str, vault_root_index: int) -> str:
+    path = Path(note_path)
+    parts = path.parts
+    if vault_root_index + 1 >= len(parts):
+        return "Uncategorized"
+
+    taxonomy_parts = [part.strip() for part in parts[vault_root_index + 1 : -1] if part.strip()]
+    if not taxonomy_parts:
+        return "Uncategorized"
+
+    normalized_lookup = {candidate.casefold(): candidate for candidate in CATEGORY_COLORS}
+    for candidate in reversed(taxonomy_parts):
+        candidate_key = candidate.casefold()
+        if candidate_key in normalized_lookup:
+            return normalized_lookup[candidate_key]
+
+    return taxonomy_parts[0]
 
 
 class RoundedRectItem(QGraphicsRectItem):
@@ -298,10 +334,14 @@ class BrainMapWidget(QGraphicsView):
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._zoom = 1.0
         self._min_zoom = 0.1
         self._max_zoom = 3.0
+        self._legend_margin_x = 16
+        self._legend_margin_y = 16
 
         self._panning = False
         self._pan_last_pos = QPoint()
@@ -375,6 +415,7 @@ class BrainMapWidget(QGraphicsView):
         self.resetTransform()
         self._zoom = 1.0
         self.hide_tooltip()
+        self._clear_legend_item()
 
         self.graph.clear()
         self.node_items.clear()
@@ -429,6 +470,7 @@ class BrainMapWidget(QGraphicsView):
                 self._empty_label.show()
                 self._center_empty_label()
             self.centerOn(0, 0)
+            self._position_legend()
             return
 
         positions = nx.spring_layout(self.graph, seed=42, k=0.45)
@@ -440,7 +482,7 @@ class BrainMapWidget(QGraphicsView):
         for node_id in self.graph.nodes:
             payload = node_data.get(node_id, {"id": node_id, "label": node_id, "type": "note"})
             title = str(payload.get("label") or node_id)
-            note_path = str(payload.get("path") or payload.get("note_path") or "")
+            note_path = _resolve_note_path(payload)
             category = self._extract_category(note_path, vault_root_index)
             color = self.color_manager.get_color(category)
             category_color_map.setdefault(category, color)
@@ -475,11 +517,12 @@ class BrainMapWidget(QGraphicsView):
 
         center = self._graph_centroid()
         self.centerOn(center.x(), center.y())
+        self._position_legend()
 
     def _infer_vault_root_index(self, node_data: dict[str, dict[str, Any]]) -> int:
         note_paths: list[Path] = []
         for payload in node_data.values():
-            raw_path = str(payload.get("path") or payload.get("note_path") or "").strip()
+            raw_path = _resolve_note_path(payload)
             if not raw_path:
                 continue
             note_paths.append(Path(raw_path))
@@ -494,26 +537,10 @@ class BrainMapWidget(QGraphicsView):
             return max(0, len(note_paths[0].parts) - 2)
 
     def _extract_category(self, note_path: str, vault_root_index: int) -> str:
-        path = Path(note_path)
-        parts = path.parts
-        category_index = vault_root_index + 1
-
-        if category_index >= len(parts):
-            return "Uncategorized"
-
-        category = parts[category_index].strip()
-        if not category:
-            return "Uncategorized"
-
-        if Path(category).suffix:
-            return "Uncategorized"
-
-        return category
+        return _extract_category_from_note_path(note_path, vault_root_index)
 
     def _build_legend(self, category_color_map: dict[str, QColor]) -> None:
-        if self._legend_bg is not None and self._legend_bg.scene() is self.scene:
-            self.scene.removeItem(self._legend_bg)
-        self._legend_bg = None
+        self._clear_legend_item()
 
         if not category_color_map:
             return
@@ -524,6 +551,7 @@ class BrainMapWidget(QGraphicsView):
         legend.setBrush(bg_color)
         legend.setPen(QPen(QColor("#2a2a2a"), 1.0))
         legend.setZValue(300)
+        legend.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
 
         title_item = QGraphicsSimpleTextItem("CATEGORIES", legend)
         title_font = QFont("Segoe UI", 10)
@@ -554,11 +582,46 @@ class BrainMapWidget(QGraphicsView):
         legend_height = y_cursor + 8.0
         legend.setRect(0, 0, max_width + 12.0, legend_height)
 
-        scene_rect = self.scene.sceneRect()
-        legend.setPos(scene_rect.left() + 16.0, scene_rect.bottom() - legend_height - 16.0)
-
         self.scene.addItem(legend)
         self._legend_bg = legend
+        self._position_legend()
+
+    def _legend_is_valid(self) -> bool:
+        if self._legend_bg is None:
+            return False
+
+        try:
+            _ = self._legend_bg.scene()
+            _ = self._legend_bg.rect()
+            return True
+        except RuntimeError:
+            self._legend_bg = None
+            return False
+
+    def _clear_legend_item(self) -> None:
+        if not self._legend_is_valid():
+            return
+
+        try:
+            if self._legend_bg.scene() is self.scene:
+                self.scene.removeItem(self._legend_bg)
+        except RuntimeError:
+            pass
+        finally:
+            self._legend_bg = None
+
+    def _position_legend(self) -> None:
+        if not self._legend_is_valid():
+            return
+
+        legend_rect = self._legend_bg.rect()
+        viewport_rect = self.viewport().rect()
+        anchor_y = max(
+            self._legend_margin_y,
+            viewport_rect.height() - self._legend_margin_y - int(round(legend_rect.height())),
+        )
+        anchor_point = QPoint(self._legend_margin_x, anchor_y)
+        self._legend_bg.setPos(self.mapToScene(anchor_point))
 
     def _scale_positions(self, positions: dict[str, Any]) -> dict[str, tuple[float, float]]:
         if not positions:
@@ -967,9 +1030,14 @@ class BrainMapWidget(QGraphicsView):
             self._pan_last_pos = current_pos
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            self._position_legend()
             event.accept()
             return
         super().mouseMoveEvent(event)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._position_legend()
 
     def mouseReleaseEvent(self, event: Any) -> None:
         if self._active_drag_node is not None and event.button() == Qt.MouseButton.LeftButton:
@@ -1012,6 +1080,7 @@ class BrainMapWidget(QGraphicsView):
             scale_factor = target_zoom / self._zoom
             self.scale(scale_factor, scale_factor)
             self._zoom = target_zoom
+            self._position_legend()
             event.accept()
             return
 

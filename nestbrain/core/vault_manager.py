@@ -10,6 +10,7 @@ from typing import Any
 
 from .nvidia_client import nvidia_client
 from .paths import get_config_path, get_default_vault_root
+from .utils import to_slug
 
 logger = logging.getLogger(__name__)
 
@@ -435,9 +436,7 @@ def _normalize_category(category: str) -> str:
 
 
 def _sanitize_filename(value: str) -> str:
-    safe = re.sub(r"[/\\:*?\"<>|]", "-", value)
-    safe = re.sub(r"-+", "-", safe)
-    return safe.strip("-") or "note"
+    return to_slug(value)
 
 
 def _looks_binary(data: bytes) -> bool:

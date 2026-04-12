@@ -3,15 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 from dataclasses import asdict
 from datetime import datetime
-import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QThread, Qt, QPoint, QRect
-from PyQt6.QtGui import QMouseEvent, QIcon
+from PyQt6.QtCore import QProcess, QThread, Qt
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -48,6 +47,7 @@ class SettingsDialog(QDialog):
         self.resize(700, 460)
 
         self._config = config
+        self._auth_process: QProcess | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 20, 22, 18)
@@ -99,7 +99,8 @@ class SettingsDialog(QDialog):
         self.zotero_api_key_input = QLineEdit(config.zotero_api_key)
         self.zotero_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.zotero_api_key_input.setPlaceholderText("Zotero API key")
-        self.nvidia_host_input = QLineEdit(config.nvidia_host)
+        nvidia_host_value = str(getattr(config, "nvidia_host", getattr(config, "ollama_host", "")))
+        self.nvidia_host_input = QLineEdit(nvidia_host_value)
         self.nvidia_host_input.setPlaceholderText("https://integrate.api.nvidia.com/v1")
         self.zotero_host_input = QLineEdit(config.zotero_host)
         self.zotero_host_input.setPlaceholderText("http://localhost:23119")
@@ -163,19 +164,58 @@ class SettingsDialog(QDialog):
 
     def _authenticate_notebooklm(self) -> None:
         try:
+            if self._auth_process and self._auth_process.state() != QProcess.ProcessState.NotRunning:
+                self.notebooklm_status_label.setText("Authentication is already in progress.")
+                return
+
             if getattr(sys, "frozen", False):
-                command = [sys.executable, "--notebooklm-auth"]
+                arguments = ["--notebooklm-auth"]
             else:
-                command = [sys.executable, "-m", "nestbrain.core.notebooklm_browser_auth"]
+                arguments = ["-m", "nestbrain.core.notebooklm_browser_auth"]
 
-            popen_kwargs: dict[str, Any] = {}
-            if os.name == "nt" and hasattr(subprocess, "CREATE_NEW_CONSOLE"):
-                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            process = QProcess(self)
+            process.setProgram(sys.executable)
+            process.setArguments(arguments)
+            process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+            process.finished.connect(self._on_notebooklm_auth_finished)
+            process.errorOccurred.connect(self._on_notebooklm_auth_error)
+            self._auth_process = process
 
-            subprocess.Popen(command, **popen_kwargs)
-            self.notebooklm_status_label.setText("Authentication launched. Complete login, then click Refresh Status.")
+            self.notebooklm_auth_btn.setEnabled(False)
+            self.notebooklm_status_label.setText("Authentication in progress. Complete login in the browser window.")
+            process.start()
+            if not process.waitForStarted(3000):
+                self.notebooklm_auth_btn.setEnabled(True)
+                self._auth_process = None
+                process.deleteLater()
+                raise RuntimeError(process.errorString() or "Process failed to start.")
         except Exception as exc:
             QMessageBox.critical(self, "NotebookLM Authentication Failed", f"Could not launch authentication flow:\n{exc}")
+
+    def _on_notebooklm_auth_error(self, _error: QProcess.ProcessError) -> None:
+        self.notebooklm_auth_btn.setEnabled(True)
+        self.notebooklm_status_label.setText("Authentication failed to start. Please try again.")
+        if self._auth_process:
+            self._auth_process.deleteLater()
+            self._auth_process = None
+
+    def _on_notebooklm_auth_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+        self.notebooklm_auth_btn.setEnabled(True)
+
+        if exit_status == QProcess.ExitStatus.NormalExit and exit_code == 0:
+            self._refresh_notebooklm_status()
+            if self.notebooklm_status_label.text() == "Not authenticated":
+                self.notebooklm_status_label.setText(
+                    "Authentication finished, but tokens were not detected. Please retry."
+                )
+        else:
+            self.notebooklm_status_label.setText(
+                "Authentication did not complete successfully. Please try again."
+            )
+
+        if self._auth_process:
+            self._auth_process.deleteLater()
+            self._auth_process = None
 
     def _refresh_notebooklm_status(self) -> None:
         from ..core.notebooklm_auth import _get_auth_file_path, has_cached_auth_tokens
@@ -198,7 +238,7 @@ class SettingsDialog(QDialog):
             nvidia_api_key=self.nvidia_api_key_input.text().strip(),
             zotero_library_id=self.zotero_id_input.text().strip(),
             zotero_api_key=self.zotero_api_key_input.text().strip(),
-            nvidia_host=self.nvidia_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",
+            ollama_host=self.nvidia_host_input.text().strip() or "https://integrate.api.nvidia.com/v1",
             zotero_host=self.zotero_host_input.text().strip() or "http://localhost:23119",
         )
 
@@ -215,30 +255,17 @@ class MainWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
-        # Remove OS window frame and title bar for custom frameless design
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        # Enable hover-based mouseMoveEvent so resize cursors appear without holding a button
-        self.setMouseTracking(True)
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
-        
+        # Use a native top-level window so Windows owns resize/maximize/snap behavior.
+        self.setWindowFlags(Qt.WindowType.Window)
+
         self.app_root = app_root
         self.config_path = config_path
         self.config = config
         self.app_service = NestbrainAppService(app_root)
 
         self.setWindowTitle("Nestbrain | Pipeline")
-        self.resize(1440, 900)
-
-        # Resizing/dragging state for pure Qt implementation
-        self._resize_border = 8
-        self._dragging = False
-        self._drag_pos = QPoint()
-        self._resizing_edge = Qt.Edge(0)
-        self._mouse_press_pos = QPoint()
-        self._mouse_press_geometry = QRect()
-
-        # Native Windows resize border for frameless window hit testing
-        self._resize_border = 8
+        self.setMinimumSize(800, 600)
+        self._apply_default_window_geometry()
 
         self._pipeline_thread: QThread | None = None
         self._pipeline_worker: PipelineWorker | None = None
@@ -288,6 +315,21 @@ class MainWindow(QMainWindow):
         self._start_initial_sync()
         self._trigger_startup_scan()
 
+    def _apply_default_window_geometry(self) -> None:
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1280, 720)
+            return
+
+        available = screen.availableGeometry()
+        width = max(800, int(available.width() * 0.8))
+        height = max(600, int(available.height() * 0.8))
+        self.resize(width, height)
+
+        centered_x = available.x() + (available.width() - width) // 2
+        centered_y = available.y() + (available.height() - height) // 2
+        self.move(centered_x, centered_y)
+
     def _trigger_startup_scan(self) -> None:
         """Scan vault and render brain map immediately on startup."""
         if not self.config.vault_path:
@@ -297,117 +339,15 @@ class MainWindow(QMainWindow):
             from ..core.obsidian_parser import ObsidianParser
             parser = ObsidianParser(self.config.vault_path)
             notes = parser.parse_vault()
-            
+
             # Convert notes to dicts for the worker
             notes_payload = [asdict(note) for note in notes]
             self.workspace.update_notes(notes_payload)
-            
+
             # Start graph worker with initial notes (empty collections for now)
             self._start_graph_worker(notes_payload, [])
         except Exception as exc:
             self.statusBar().showMessage(f"Startup scan failed: {exc}", 5000)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            edge = self._resize_edges_for_pos(event.pos())
-            if edge != Qt.Edge(0):
-                self._resizing_edge = edge
-                self._mouse_press_pos = event.globalPosition().toPoint()
-                self._mouse_press_geometry = self.geometry()
-            elif self.top_nav.underMouse() and not self.top_nav.is_utility_area(event.pos()):
-                # Drag window via title bar (if not clicking buttons)
-                self._dragging = True
-                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        pos = event.pos()
-        global_pos = event.globalPosition().toPoint()
-
-        if self._resizing_edge != Qt.Edge(0):
-            diff = global_pos - self._mouse_press_pos
-            new_geo = QRect(self._mouse_press_geometry)
-            
-            if self._resizing_edge & Qt.Edge.LeftEdge:
-                new_geo.setLeft(self._mouse_press_geometry.left() + diff.x())
-            if self._resizing_edge & Qt.Edge.RightEdge:
-                new_geo.setRight(self._mouse_press_geometry.right() + diff.x())
-            if self._resizing_edge & Qt.Edge.TopEdge:
-                new_geo.setTop(self._mouse_press_geometry.top() + diff.y())
-            if self._resizing_edge & Qt.Edge.BottomEdge:
-                new_geo.setBottom(self._mouse_press_geometry.bottom() + diff.y())
-                
-            if new_geo.width() >= self.minimumWidth() and new_geo.height() >= self.minimumHeight():
-                self.setGeometry(new_geo)
-            event.accept()
-        elif self._dragging:
-            self.move(global_pos - self._drag_pos)
-            event.accept()
-        else:
-            # Update cursor for resize preview
-            edges = self._resize_edges_for_pos(pos)
-            cursor = Qt.CursorShape.ArrowCursor
-            if edges in (Qt.Edge.TopEdge, Qt.Edge.BottomEdge):
-                cursor = Qt.CursorShape.SizeVerCursor
-            elif edges in (Qt.Edge.LeftEdge, Qt.Edge.RightEdge):
-                cursor = Qt.CursorShape.SizeHorCursor
-            elif edges in (Qt.Edge.TopEdge | Qt.Edge.LeftEdge, Qt.Edge.BottomEdge | Qt.Edge.RightEdge):
-                cursor = Qt.CursorShape.SizeFDiagCursor
-            elif edges in (Qt.Edge.TopEdge | Qt.Edge.RightEdge, Qt.Edge.BottomEdge | Qt.Edge.LeftEdge):
-                cursor = Qt.CursorShape.SizeBDiagCursor
-            self.setCursor(cursor)
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        self._dragging = False
-        self._resizing_edge = Qt.Edge(0)
-        self.unsetCursor()
-        event.accept()
-
-    def _resize_edges_for_pos(self, pos) -> Qt.Edge:
-        """Return edge flags near the frame border for native system resize."""
-        if self.isMaximized():
-            return Qt.Edge(0)
-
-        x = pos.x()
-        y = pos.y()
-        w = self.width()
-        h = self.height()
-        b = self._resize_border
-
-        edges = Qt.Edge(0)
-        if x <= b:
-            edges |= Qt.Edge.LeftEdge
-        elif x >= w - b:
-            edges |= Qt.Edge.RightEdge
-        if y <= b:
-            edges |= Qt.Edge.TopEdge
-        elif y >= h - b:
-            edges |= Qt.Edge.BottomEdge
-        return edges
-
-    def toggle_maximize_restore(self) -> None:
-        """Toggle between maximized and restored window state."""
-        if self.isMaximized():
-            self.showNormal()
-            self.top_nav.maximize_button.setToolTip("Maximize")
-            self.top_nav.maximize_button.setText("□")
-        else:
-            self.showMaximized()
-            self.top_nav.maximize_button.setToolTip("Restore")
-            self.top_nav.maximize_button.setText("❐")
-
-    def changeEvent(self, event: QEvent) -> None:
-        """Sync maximize/restore button visuals when window state changes externally
-        (e.g. via taskbar click, Win+Arrow, or double-click title bar)."""
-        if event.type() == QEvent.Type.WindowStateChange:
-            if self.isMaximized():
-                self.top_nav.maximize_button.setText("❐")
-                self.top_nav.maximize_button.setToolTip("Restore")
-            else:
-                self.top_nav.maximize_button.setText("□")
-                self.top_nav.maximize_button.setToolTip("Maximize")
-        super().changeEvent(event)
 
     def closeEvent(self, event: Any) -> None:
         save_config(self.config_path, self.config)
@@ -421,9 +361,6 @@ class MainWindow(QMainWindow):
         self.top_nav.nav_changed.connect(self._on_nav_changed)
         self.top_nav.settings_clicked.connect(self._open_settings)
         self.top_nav.refresh_clicked.connect(self._refresh_all_sections)
-        self.top_nav.minimize_requested.connect(self.showMinimized)
-        self.top_nav.maximize_requested.connect(self.toggle_maximize_restore)
-        self.top_nav.close_requested.connect(self.close)
         self.workspace.start_pipeline_requested.connect(self._start_pipeline)
         self.pipeline_panel.collection_selected.connect(self._set_selected_collection)
         self.pipeline_panel.create_collection_requested.connect(self._create_collection)
