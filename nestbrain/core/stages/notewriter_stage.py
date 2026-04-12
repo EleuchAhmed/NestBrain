@@ -12,7 +12,7 @@ from ..note_renderer import (
     merge_into_existing_note,
 )
 from ..utils import to_slug
-from ..vault_manager import classify_and_file, log_classification_failure
+from ..vault_manager import classify_and_file, log_classification_failure, find_note_path
 from ..obsidian_parser import ObsidianNote
 from ..ollama_client import OllamaClient
 
@@ -48,13 +48,29 @@ async def write_note(
     legacy_dir = Path(vault_path) / "20_Concepts" / domain
     legacy_dir.mkdir(parents=True, exist_ok=True)
     legacy_note_path = legacy_dir / f"{slug}.md"
-    
-    if legacy_note_path.exists():
-        existing = legacy_note_path.read_text(encoding="utf-8")
+
+    resolved_existing = find_note_path(collection_display_name, vault_path) or find_note_path(slug, vault_path)
+    if resolved_existing is None and legacy_note_path.exists():
+        resolved_existing = legacy_note_path
+
+    if resolved_existing is not None:
+        existing = resolved_existing.read_text(encoding="utf-8")
         note_content = merge_into_existing_note(existing, items, synthesis, media_paths, items)
-    else:
-        note_content = render_master_note(collection_display_name, items, synthesis, media_paths)
-    
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            suffix=resolved_existing.suffix or ".md",
+            prefix=f".{slug}.",
+            dir=str(resolved_existing.parent),
+        ) as handle:
+            handle.write(note_content)
+            temp_note_path = Path(handle.name)
+        temp_note_path.replace(resolved_existing)
+        return str(resolved_existing.relative_to(vault_path))
+
+    note_content = render_master_note(collection_display_name, items, synthesis, media_paths)
+
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",

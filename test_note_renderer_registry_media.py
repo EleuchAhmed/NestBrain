@@ -2,7 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from nestbrain.core.note_renderer import SynthesisResult, merge_into_existing_note, slugify
+from nestbrain.core.note_renderer import SynthesisResult, merge_into_existing_note, merge_note, slugify
 from nestbrain.core.utils import to_slug
 from nestbrain.core.pipeline_runner import PipelineRunner
 from nestbrain.core.registry import PipelineRegistry
@@ -84,6 +84,19 @@ def test_merge_into_existing_note_preserves_body_text_and_updates_sections():
     assert "assets/new-audio.wav" in updated
     assert "New deep dive content." in updated
     assert "New Item" in updated
+
+
+def test_merge_note_appends_new_context_section(tmp_path: Path):
+    note_path = tmp_path / "entity.md"
+    note_path.write_text("# Entity\n\nExisting body.\n", encoding="utf-8")
+
+    merge_note(str(note_path), "Additional context.", "Source Topic")
+
+    content = note_path.read_text(encoding="utf-8")
+    assert "# Entity" in content
+    assert "Existing body." in content
+    assert "## New context from [[Source Topic]]" in content
+    assert "Additional context." in content
 
 
 def test_registry_backups_corrupted_json_before_reset(tmp_path: Path):

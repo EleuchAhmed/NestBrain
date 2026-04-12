@@ -4,6 +4,7 @@ from pathlib import Path
 
 from nestbrain.core.stages.entity_extractor import EntityExtractor
 from nestbrain.core.stages.master_synthesizer import MasterSynthesizer
+from nestbrain.core.stages.connection_annotator import ConnectionAnnotator
 from nestbrain.core.stages.note_seeder import NoteSeeder
 from nestbrain.core.stages.notewriter_stage import write_note
 from nestbrain.core.note_renderer import SynthesisResult
@@ -71,7 +72,7 @@ def test_entity_extractor_filters_by_confidence_and_keeps_justifications():
     assert all("justification" in row for row in extractor.last_scored_entities)
 
 
-def test_note_seeder_skips_semantic_duplicate_via_alias_and_logs(tmp_path: Path):
+def test_note_seeder_merges_semantic_duplicate_via_alias_and_logs(tmp_path: Path):
     existing_note = tmp_path / "kubernetes.md"
     existing_note.write_text(
         "---\n"
@@ -88,11 +89,13 @@ def test_note_seeder_skips_semantic_duplicate_via_alias_and_logs(tmp_path: Path)
 
     assert ok is True
     assert seeder.get_link_overrides().get("K8s") == "K8s"
+    assert seeder.last_result["action"] == "merge"
+    assert "## New context from [[Container Orchestration]]" in existing_note.read_text(encoding="utf-8")
 
     log_path = tmp_path / "seeder_log.json"
     assert log_path.exists()
     records = json.loads(log_path.read_text(encoding="utf-8"))
-    assert records[-1]["action"] == "skipped"
+    assert records[-1]["action"] == "merge"
     assert records[-1]["matched_note"] == "kubernetes"
 
 
@@ -205,6 +208,91 @@ def test_notewriter_skips_filing_when_classification_fails(tmp_path: Path, monke
     assert failure_records
     assert failure_records[0]["stage"] == "notewriter_stage"
     assert failure_records[0]["note_title"] == "Edge Case Title"
+
+
+def test_notewriter_merges_existing_note_without_reclassifying(tmp_path: Path, monkeypatch):
+    from nestbrain.core.stages import notewriter_stage as stage_module
+
+    existing_dir = tmp_path / "Artificial Intelligence & Data"
+    existing_dir.mkdir(parents=True, exist_ok=True)
+    existing_note = existing_dir / "llm-fine-tuning.md"
+    existing_note.write_text(
+        "---\n"
+        "title: LLM Fine-Tuning\n"
+        "last_updated: 2025-01-01T00:00:00\n"
+        "---\n\n"
+        "# LLM Fine-Tuning\n\n"
+        "Existing content.\n",
+        encoding="utf-8",
+    )
+
+    def fail_if_called(_path: str) -> str:
+        raise AssertionError("classify_and_file should not run for merges")
+
+    monkeypatch.setattr(stage_module, "classify_and_file", fail_if_called)
+
+    synthesis = SynthesisResult(
+        academic_synthesis="Academic synthesis",
+        conceptual_deep_dive="Deep dive update",
+        actionable_knowledge="Takeaways",
+        knowledge_connections="Connections",
+        critical_evaluation="Critical evaluation",
+        glossary="Glossary",
+    )
+
+    relative_path = asyncio.run(
+        write_note(
+            collection_slug="llm-fine-tuning",
+            collection_display_name="LLM Fine-Tuning",
+            items=[{"key": "A1", "title": "Source"}],
+            synthesis=synthesis,
+            media_paths={},
+            vault_path=str(tmp_path),
+            status_callback=None,
+        )
+    )
+
+    assert relative_path == str(existing_note.relative_to(tmp_path))
+    content = existing_note.read_text(encoding="utf-8")
+    assert "Deep dive update" in content
+    assert "Updated:" in content
+
+
+def test_connection_annotator_appends_related_section_once_and_logs(tmp_path: Path, monkeypatch):
+    source_note = tmp_path / "retrieval-augmented-generation.md"
+    source_note.write_text("# Retrieval-Augmented Generation\n\nSummary text.\n", encoding="utf-8")
+
+    related_note = tmp_path / "context-window-strategies.md"
+    related_note.write_text("# Context Window Strategies\n\nBody text.\n", encoding="utf-8")
+
+    annotator = ConnectionAnnotator(str(tmp_path))
+    monkeypatch.setattr(annotator, "_generate_annotation", lambda *args, **kwargs: "Both notes address retrieval-heavy context handling.")
+
+    annotator.annotate_connections(
+        "Retrieval-Augmented Generation",
+        source_note.read_text(encoding="utf-8"),
+        [(str(related_note), 0.91)],
+    )
+
+    content = related_note.read_text(encoding="utf-8")
+    assert content.count("## Related — [[Retrieval-Augmented Generation]]") == 1
+
+    log_path = tmp_path / "vault_log.jsonl"
+    assert log_path.exists()
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert records[-1]["action"] == "propagation"
+    assert records[-1]["updated"] == "context-window-strategies"
+    assert records[-1]["linked_to"] == "Retrieval-Augmented Generation"
+
+    annotator.annotate_connections(
+        "Retrieval-Augmented Generation",
+        source_note.read_text(encoding="utf-8"),
+        [(str(related_note), 0.91)],
+    )
+
+    assert related_note.read_text(encoding="utf-8").count("## Related — [[Retrieval-Augmented Generation]]") == 1
+    records_after = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(records_after) == len(records)
 
 
 def test_note_seeder_logs_classification_failure_without_crashing(tmp_path: Path, monkeypatch):

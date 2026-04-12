@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from dataclasses import dataclass, field
 import re
+from pathlib import Path
 from typing import Any
 from .utils import to_slug
 
@@ -197,15 +198,16 @@ def merge_into_existing_note(
     }
     
     for section_header, new_content in sections.items():
-        if section_header in updated and new_content:
-            # Find section and append new content with timestamp
+        if not new_content:
+            continue
+        enrichment = f"\n\n### Updated: {now.split('T')[0]}\n\n{new_content}"
+        if section_header in updated:
             idx = updated.find(section_header)
             next_section_idx = updated.find("\n---\n", idx + len(section_header))
             if next_section_idx > -1:
-                enrichment = f"\n\n### Updated: {now.split('T')[0]}\n\n{new_content}"
-                updated = (
-                    updated[:next_section_idx] + enrichment + updated[next_section_idx:]
-                )
+                updated = updated[:next_section_idx] + enrichment + updated[next_section_idx:]
+                continue
+        updated = updated.rstrip() + f"\n\n{section_header}\n{enrichment}\n"
     
     # Update sources table
     if "## 📚 Sources Index" in updated:
@@ -228,3 +230,21 @@ def merge_into_existing_note(
         updated = updated[:next_line_idx] + new_log_row + updated[next_line_idx:]
     
     return updated
+
+
+def merge_note(existing_path: str, new_context: str, source_title: str) -> None:
+    """Append a dated context section to an existing note without rewriting prior content."""
+
+    note_path = Path(existing_path)
+    if not note_path.exists() or not note_path.is_file():
+        raise FileNotFoundError(f"Note file not found: {existing_path}")
+
+    timestamp = datetime.now().date().isoformat()
+    section = (
+        f"\n\n## New context from [[{source_title}]] — {timestamp}\n"
+        f"{new_context.strip()}\n"
+    )
+
+    current = note_path.read_text(encoding="utf-8")
+    updated = current + section if current.endswith("\n") else current + "\n" + section.lstrip("\n")
+    note_path.write_text(updated, encoding="utf-8")

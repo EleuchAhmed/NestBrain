@@ -421,6 +421,17 @@ def log_classification_failure(
     return log_path
 
 
+def append_vault_log_entry(vault_root: str | Path | None, payload: dict[str, Any]) -> Path:
+    root = Path(vault_root).expanduser().resolve() if vault_root else _resolve_vault_root(create=False)
+    if root is None:
+        root = _resolve_vault_root(create=True)
+    if root is None:
+        raise ValueError("Vault root could not be resolved for logging.")
+
+    _append_vault_log(root, payload)
+    return root / "vault_log.jsonl"
+
+
 def audit_unclassified_notes(vault_root: str | Path | None = None) -> dict[str, Any]:
     root = Path(vault_root).expanduser().resolve() if vault_root else _resolve_vault_root(create=False)
     if root is None or not root.exists():

@@ -17,6 +17,7 @@ from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient
 from .note_renderer import SynthesisResult
 from .nvidia_client import nvidia_client
+from .vault_manager import find_note_path
 from .utils import to_slug
 
 # V2 Stages
@@ -229,6 +230,14 @@ class PipelineWorkflowV2:
             for term in entities:
                 self._emit(status_callback, f"L2: Seeding/Patching entity '{term}'")
                 self.seeder.process_extracted_term(term, deep_dive_content, collection_display_name)
+                seeder_result = dict(self.seeder.last_result or {})
+                if seeder_result.get("action") in {"created", "merge"}:
+                    self._propagate_note(
+                        note_title=str(seeder_result.get("title") or term),
+                        note_path=str(seeder_result.get("note_path") or ""),
+                        vault_path=vault_path,
+                        status_callback=status_callback,
+                    )
 
             deep_dive_content = self.synthesizer.weave_inline_wikilinks(
                 deep_dive_content,
@@ -268,18 +277,13 @@ class PipelineWorkflowV2:
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
 
-            # LAYER 3: Vault Propagation
-            self._emit(status_callback, "L3: Vector Indexing")
-            new_vec = self.indexer.embed_new_note(collection_slug, deep_dive_content)
-            
-            self._emit(status_callback, "L3: Semantic K-NN Search")
-            matches = self.indexer.find_similar_notes(new_vec, top_k=5)
-            
-            self._emit(status_callback, "L3: Auditing Connections")
-            survivors = self.auditor.audit_connections(deep_dive_content, matches)
-            
-            self._emit(status_callback, "L3: Cross-annotating Graph")
-            self.annotator.annotate_connections(collection_slug, deep_dive_content, survivors)
+            if note_path:
+                self._propagate_note(
+                    note_title=collection_display_name,
+                    note_path=str(Path(vault_path) / note_path),
+                    vault_path=vault_path,
+                    status_callback=status_callback,
+                )
             
             # Update registry with note path and save
             if note_path:
@@ -310,6 +314,46 @@ class PipelineWorkflowV2:
             if abstract:
                 snippets.append(f"Abstract: {abstract[:320]}")
         return "\n".join(snippets)
+
+    def _propagate_note(
+        self,
+        note_title: str,
+        note_path: str,
+        vault_path: str,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        source_path = Path(note_path)
+        if not source_path.is_absolute():
+            source_path = Path(vault_path) / note_path
+        if not source_path.exists():
+            resolved = find_note_path(note_title, vault_path)
+            if resolved is None or not resolved.exists():
+                return
+            source_path = resolved
+
+        note_content = source_path.read_text(encoding="utf-8")
+
+        self._emit(status_callback, "L3: Vector Indexing")
+        new_vec = self.indexer.embed_new_note(note_title, note_content)
+        if not new_vec:
+            return
+
+        self._emit(status_callback, "L3: Semantic K-NN Search")
+        matches = self.indexer.find_similar_notes(new_vec, top_k=5)
+
+        self._emit(status_callback, "L3: Auditing Connections")
+        survivors = self.auditor.audit_connections(note_content, matches)
+
+        related_targets: list[tuple[str, float]] = []
+        for related_title, score in survivors:
+            related_path = find_note_path(related_title, vault_path)
+            if related_path is None:
+                continue
+            related_targets.append((str(related_path), score))
+
+        if related_targets:
+            self._emit(status_callback, "L3: Cross-annotating Graph")
+            self.annotator.annotate_connections(note_title, note_content, related_targets)
 
     def _dedupe_entities(self, entities: list[str]) -> list[str]:
         deduped: list[str] = []

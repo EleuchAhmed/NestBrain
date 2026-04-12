@@ -4,9 +4,9 @@ from pathlib import Path
 import json
 from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
-from ..note_renderer import classify_domain
+from ..note_renderer import classify_domain, merge_note
 from ..utils import to_slug
-from ..vault_manager import classify_and_file, log_classification_failure
+from ..vault_manager import classify_and_file, log_classification_failure, find_note_path
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class NoteSeeder:
         self.client = nvidia_client
         self.seeder_log_path = self.vault_path / "seeder_log.json"
         self.link_overrides: dict[str, str] = {}
+        self.last_result: dict[str, object] = {}
 
     def _get_note_path(self, term: str, master_note_context: str = "", subject_title: str = "") -> Path:
         """Helper to get a safe Markdown path for an entity term in concept taxonomy."""
@@ -32,6 +33,17 @@ class NoteSeeder:
 
         safe_slug = to_slug(term)
         return self.vault_path / "20_Concepts" / domain / f"{safe_slug}.md"
+
+    def _resolve_existing_note_path(self, note_title: str) -> Path | None:
+        if not note_title.strip():
+            return None
+
+        resolved = find_note_path(note_title, self.vault_path)
+        if resolved is not None:
+            return resolved
+
+        fallback = self._get_note_path(note_title)
+        return fallback if fallback.exists() else None
 
     def process_extracted_term(self, term: str, master_note_context: str, subject_title: str) -> bool:
         """
@@ -46,19 +58,51 @@ class NoteSeeder:
         if semantic_result.get("match_found"):
             matched_note = str(semantic_result.get("matched_note") or "").strip()
             matched_display = str(semantic_result.get("matched_display") or "").strip()
-            if matched_note:
-                self._backfill_alias_for_existing(term, existing_notes, matched_note)
-                self.link_overrides[term] = matched_display or term
+            matched_path = str(semantic_result.get("matched_path") or "").strip()
+            target_path = Path(matched_path) if matched_path else self._resolve_existing_note_path(matched_note)
+            if target_path is None:
+                self.last_result = {
+                    "action": "failed",
+                    "source": subject_title,
+                    "existing": matched_note or None,
+                    "note_path": "",
+                    "title": term,
+                }
+                self._append_seeder_log(
+                    {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "entity": term,
+                        "action": "failed",
+                        "existing": matched_note or None,
+                        "source": subject_title,
+                        "reason": "Semantic duplicate found but target path could not be resolved.",
+                    }
+                )
+                logger.warning("Seeder could not resolve merge target for '%s'", term)
+                return False
+
+            self._backfill_alias_for_existing(term, existing_notes, matched_note or target_path.stem)
+            merge_note(str(target_path), master_note_context, subject_title)
+            self.link_overrides[term] = matched_display or matched_note or term
+            self.last_result = {
+                "action": "merge",
+                "source": subject_title,
+                "existing": matched_note or target_path.stem,
+                "note_path": str(target_path),
+                "title": matched_display or matched_note or target_path.stem,
+            }
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "entity": term,
-                    "action": "skipped",
+                    "action": "merge",
+                    "existing": matched_note or target_path.stem,
+                    "source": subject_title,
                     "matched_note": matched_note or None,
                     "reason": str(semantic_result.get("reasoning") or "Semantic duplicate found."),
                 }
             )
-            logger.info("Seeder skipped '%s' because semantic duplicate exists: %s", term, matched_note or "unknown")
+            logger.info("Seeder merged '%s' into existing note: %s", term, matched_note or target_path.stem)
             return True
 
         if not note_path.exists():
@@ -67,6 +111,13 @@ class NoteSeeder:
             created = self._seed_new_note(term, master_note_context, subject_title, note_path)
             if created:
                 self.link_overrides[term] = term
+            self.last_result = {
+                "action": "created" if created else "failed",
+                "source": subject_title,
+                "existing": None,
+                "note_path": str(note_path),
+                "title": term,
+            }
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -78,14 +129,24 @@ class NoteSeeder:
             )
             return created
         else:
-            logger.info(f"Term '{term}' already exists by resolved path. Skipping mutation for backward safety.")
+            logger.info(f"Term '{term}' already exists by resolved path. Appending new context.")
+            merge_note(str(note_path), master_note_context, subject_title)
             self._upsert_alias_on_note(note_path, term)
             self.link_overrides[term] = term
+            self.last_result = {
+                "action": "merge",
+                "source": subject_title,
+                "existing": note_path.stem,
+                "note_path": str(note_path),
+                "title": note_path.stem,
+            }
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "entity": term,
-                    "action": "skipped",
+                    "action": "merge",
+                    "existing": note_path.stem,
+                    "source": subject_title,
                     "matched_note": note_path.stem,
                     "reason": "Resolved canonical note path already exists.",
                 }
@@ -187,6 +248,7 @@ class NoteSeeder:
                 {
                     "title": title,
                     "path": str(note_path),
+                    "slug": to_slug(title),
                     "aliases": aliases,
                 }
             )
@@ -234,19 +296,22 @@ class NoteSeeder:
         for note in existing_notes:
             title = str(note.get("title") or "")
             aliases = [str(a) for a in (note.get("aliases") or [])]
-            if title.lower() == candidate_slug:
+            note_path = str(note.get("path") or "").strip()
+            if to_slug(title) == candidate_slug:
                 return {
                     "match_found": True,
                     "matched_note": title,
+                    "matched_path": note_path or None,
                     "matched_display": self._preferred_display_alias(aliases, candidate),
                     "reasoning": "Exact slug match from note filename.",
                 }
             variants = [title] + aliases
             for variant in variants:
-                if self._normalize_concept(variant) == normalized_candidate:
+                if to_slug(variant) == candidate_slug or self._normalize_concept(variant) == normalized_candidate:
                     return {
                         "match_found": True,
                         "matched_note": title,
+                        "matched_path": note_path or None,
                         "matched_display": self._preferred_display_alias(aliases, candidate),
                         "reasoning": "Exact normalized match from title/alias index.",
                     }
@@ -314,6 +379,7 @@ class NoteSeeder:
             return {
                 "match_found": match_found,
                 "matched_note": str(matched_note).strip() if matched_note else None,
+                "matched_path": next((str(note.get("path") or "") for note in existing_notes if str(note.get("title") or "").lower() == str(matched_note).strip().lower()), None),
                 "matched_display": matched_display,
                 "reasoning": reasoning or "Semantic check completed.",
             }

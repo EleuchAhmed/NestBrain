@@ -27,7 +27,7 @@ class SemanticAuditor:
         safe = re.sub(r"-+", "-", safe)
         return safe.strip("-")
 
-    def audit_connections(self, new_note_content: str, semantic_matches: List[Tuple[str, float]], threshold_logit: float = 0.0) -> List[str]:
+    def audit_connections(self, new_note_content: str, semantic_matches: List[Tuple[str, float]], threshold_logit: float = 0.0) -> List[Tuple[str, float]]:
         """
         Takes the raw text of the newly minted note, compares it against the text 
         of the conceptually matched notes, and runs them through the reranking model.
@@ -39,7 +39,7 @@ class SemanticAuditor:
         logger.info(f"Auditing {len(semantic_matches)} potential graph connections.")
 
         passages = []
-        mapping = {}
+        mapping: dict[int, Tuple[str, float]] = {}
 
         for idx, (title, score) in enumerate(semantic_matches):
             try:
@@ -51,7 +51,7 @@ class SemanticAuditor:
                 content = note_file.read_text(encoding="utf-8")
                 truncated = content[:3000] # Rerankers typically handle shorter contexts 
                 passages.append({"text": truncated})
-                mapping[idx] = title
+                mapping[idx] = (title, score)
             except Exception as e:
                 logger.warning(f"Could not read matched note {title}: {e}")
 
@@ -76,9 +76,9 @@ class SemanticAuditor:
                 logit = item.get("logit", -100)
                 
                 if logit >= threshold_logit:
-                    original_title = mapping.get(original_idx)
-                    if original_title:
-                        survivors.append(original_title)
+                    original_match = mapping.get(original_idx)
+                    if original_match:
+                        survivors.append(original_match)
                 else:
                     logger.debug(f"Connection {mapping.get(original_idx)} rejected by Auditor (logit {logit}).")
 
@@ -88,5 +88,5 @@ class SemanticAuditor:
         except Exception as e:
             logger.error(f"Failed to audit semantic connections: {e}")
             # Fallback: Just return the top 2 if API fails
-            fallback = [title for title, score in semantic_matches[:2]]
+            fallback = semantic_matches[:2]
             return fallback
