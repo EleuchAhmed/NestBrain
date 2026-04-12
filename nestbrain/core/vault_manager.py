@@ -9,13 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from .nvidia_client import nvidia_client
-from .paths import get_config_path, get_default_vault_root
+from .paths import get_config_path, get_default_vault_root, get_logs_dir
 from .utils import to_slug
 
 logger = logging.getLogger(__name__)
 
 VAULT_NAME = "My Brain"
-UNCLASSIFIED_FOLDER = "_Unclassified"
 CLASSIFICATION_THRESHOLD = 0.75
 
 TAXONOMY: dict[str, tuple[str, ...]] = {
@@ -83,6 +82,45 @@ TAXONOMY: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Last-resort domains to ensure every note receives a valid taxonomy category.
+FALLBACK_TAXONOMY_DOMAINS: tuple[str, ...] = tuple(TAXONOMY.keys())
+
+# Keyword-to-domain mapping used when LLM responses are empty or invalid.
+KEYWORD_DOMAIN_RULES: tuple[tuple[str, str], ...] = (
+    ("frontend", "Software Engineering & Development"),
+    ("backend", "Software Engineering & Development"),
+    ("api", "Software Engineering & Development"),
+    ("python", "Software Engineering & Development"),
+    ("javascript", "Software Engineering & Development"),
+    ("react", "Software Engineering & Development"),
+    ("docker", "Cloud Computing & Infrastructure"),
+    ("kubernetes", "Cloud Computing & Infrastructure"),
+    ("terraform", "Cloud Computing & Infrastructure"),
+    ("devops", "Cloud Computing & Infrastructure"),
+    ("mlops", "Artificial Intelligence & Data"),
+    ("machine learning", "Artificial Intelligence & Data"),
+    ("deep learning", "Artificial Intelligence & Data"),
+    ("nlp", "Artificial Intelligence & Data"),
+    ("data pipeline", "Artificial Intelligence & Data"),
+    ("security", "Cybersecurity"),
+    ("owasp", "Cybersecurity"),
+    ("encryption", "Cybersecurity"),
+    ("network", "Networking & Communications"),
+    ("tcp", "Networking & Communications"),
+    ("routing", "Networking & Communications"),
+    ("iot", "Hardware & Computer Architecture"),
+    ("microcontroller", "Hardware & Computer Architecture"),
+    ("semiconductor", "Hardware & Computer Architecture"),
+    ("blockchain", "Emerging Technologies"),
+    ("quantum", "Emerging Technologies"),
+    ("ar/vr", "Emerging Technologies"),
+    ("system administration", "IT Operations & Management"),
+    ("database", "IT Operations & Management"),
+    ("ui", "Design & User Experience"),
+    ("ux", "Design & User Experience"),
+    ("interaction design", "Design & User Experience"),
+)
+
 
 def init_vault() -> Path:
     """Initialize the default vault root on first launch and persist it to config."""
@@ -124,38 +162,24 @@ def classify_and_file(note_path: str) -> str:
         is_binary = True
         content = ""
         title = source_path.stem
-        classification = {
-            "category": UNCLASSIFIED_FOLDER,
-            "subcategory": None,
-            "confidence": 0.0,
-            "reasoning": "Binary content was provided instead of text.",
-        }
+        classification = _classify_note(title=title, content=content)
     else:
         content = source_bytes.decode("utf-8", errors="ignore")
         title = source_path.stem
-        if len(content.strip()) < 50:
-            classification = {
-                "category": UNCLASSIFIED_FOLDER,
-                "subcategory": None,
-                "confidence": 0.0,
-                "reasoning": "Note is empty or too short to classify reliably.",
-            }
-        else:
-            classification = _classify_note(title=title, content=content)
+        classification = _classify_note(title=title, content=content)
 
     category = _normalize_category(str(classification.get("category") or "").strip())
+    if not category:
+        raise ValueError(f"Unable to classify note '{title}': no valid taxonomy category returned.")
+
     subcategory = classification.get("subcategory")
     if isinstance(subcategory, str):
-        subcategory = subcategory.strip() or None
+        subcategory = _normalize_subcategory(category, subcategory.strip() or None)
     else:
         subcategory = None
 
     confidence = _coerce_confidence(classification.get("confidence"))
     reasoning = str(classification.get("reasoning") or "Classification fallback used.").strip()
-
-    if category == UNCLASSIFIED_FOLDER or confidence < CLASSIFICATION_THRESHOLD:
-        category = UNCLASSIFIED_FOLDER
-        subcategory = None
 
     filed_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     footer = _build_metadata_footer(category, subcategory, confidence, filed_on)
@@ -196,10 +220,7 @@ def classify_and_file(note_path: str) -> str:
         },
     )
 
-    if category == UNCLASSIFIED_FOLDER:
-        logger.warning("Unclassified note %s filed to %s: %s", source_path.name, target_path, reasoning)
-    else:
-        logger.info("Classified note %s filed to %s with confidence %.2f", source_path.name, target_path, confidence)
+    logger.info("Classified note %s filed to %s with confidence %.2f", source_path.name, target_path, confidence)
 
     return str(target_path)
 
@@ -208,7 +229,6 @@ def get_vault_stats() -> dict[str, int]:
     """Return counts of filed notes per top-level category."""
     vault_root = _resolve_vault_root(create=False)
     stats = {category: 0 for category in TAXONOMY}
-    stats[UNCLASSIFIED_FOLDER] = 0
 
     if vault_root is None or not vault_root.exists():
         return stats
@@ -250,9 +270,65 @@ def find_note_path(title: str, vault_root: str | Path | None = None) -> Path | N
 
 
 def _classify_note(title: str, content: str) -> dict[str, Any]:
+    llm_result = _classify_note_with_retries(title=title, content=content)
+    if llm_result:
+        return llm_result
+
+    heuristic_domain = _keyword_fallback_domain(title=title, content=content)
+    if heuristic_domain:
+        return {
+            "category": heuristic_domain,
+            "subcategory": None,
+            "confidence": 0.61,
+            "reasoning": "Keyword heuristic fallback selected taxonomy domain.",
+        }
+
+    hardcoded_domain = _hardcoded_fallback_domain(title=title, content=content)
+    if hardcoded_domain:
+        return {
+            "category": hardcoded_domain,
+            "subcategory": None,
+            "confidence": 0.4,
+            "reasoning": "Hardcoded taxonomy fallback selected default domain.",
+        }
+
+    raise ValueError(f"Unable to classify note '{title}' after LLM retries and all fallbacks.")
+
+
+def _classify_note_with_retries(title: str, content: str) -> dict[str, Any] | None:
+    for attempt in range(3):
+        parsed = _classify_note_once(title=title, content=content, attempt=attempt)
+        if not isinstance(parsed, dict):
+            continue
+        category = _normalize_category(str(parsed.get("category") or "").strip())
+        if not category:
+            continue
+        subcategory = _normalize_subcategory(category, parsed.get("subcategory"))
+        return {
+            "category": category,
+            "subcategory": subcategory,
+            "confidence": _coerce_confidence(parsed.get("confidence")),
+            "reasoning": str(parsed.get("reasoning") or "LLM classification result.").strip(),
+        }
+    return None
+
+
+def _classify_note_once(title: str, content: str, attempt: int) -> dict[str, Any] | None:
     taxonomy_lines = []
     for category, subcategories in TAXONOMY.items():
         taxonomy_lines.append(f"{category}: {', '.join(subcategories)}")
+
+    retry_instruction = ""
+    if attempt == 1:
+        retry_instruction = (
+            "Previous attempt was invalid. Return EXACTLY one of the taxonomy category names. "
+            "Do not return null, empty strings, or unknown category labels."
+        )
+    elif attempt == 2:
+        retry_instruction = (
+            "Final attempt: choose the single closest parent category even if uncertain. "
+            "subcategory may be null."
+        )
 
     system_prompt = (
         "You are a strict document classifier. Given the content of a note, you must\n"
@@ -260,12 +336,12 @@ def _classify_note(title: str, content: str) -> dict[str, Any]:
         "Return ONLY a valid JSON object in this exact format — no explanation, no markdown:\n"
         "{\n"
         '  "category": "<exact parent folder name>",\n'
-        '  "subcategory": "<exact subfolder name>",\n'
+        '  "subcategory": "<exact subfolder name or null>",\n'
         '  "confidence": <float between 0.0 and 1.0>,\n'
         '  "reasoning": "<one sentence max>"\n'
         "}\n\n"
-        "If the note does not clearly fit any subcategory, use the closest parent category and set subcategory to null.\n\n"
-        "TAXONOMY:\n"
+        + (retry_instruction + "\n\n" if retry_instruction else "")
+        + "TAXONOMY:\n"
         + "\n".join(taxonomy_lines)
     )
     user_prompt = f"Title: {title}\n\nContent:\n{content[:12000]}"
@@ -284,14 +360,92 @@ def _classify_note(title: str, content: str) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     except Exception as exc:
-        logger.warning("Vault classification failed for %s: %s", title, exc)
+        logger.warning("Vault classification attempt %s failed for %s: %s", attempt + 1, title, exc)
+    return None
 
-    return {
-        "category": UNCLASSIFIED_FOLDER,
-        "subcategory": None,
-        "confidence": 0.0,
-        "reasoning": "Classifier timeout or malformed response.",
+
+def _keyword_fallback_domain(title: str, content: str) -> str | None:
+    text = f"{title}\n{content}".lower()
+    scores: dict[str, int] = {category: 0 for category in TAXONOMY}
+    for keyword, category in KEYWORD_DOMAIN_RULES:
+        if keyword in text:
+            scores[category] += 1
+
+    best_category = None
+    best_score = 0
+    for category, score in scores.items():
+        if score > best_score:
+            best_category = category
+            best_score = score
+
+    if best_category and best_score > 0:
+        return best_category
+    return None
+
+
+def _hardcoded_fallback_domain(title: str, content: str) -> str | None:
+    if not FALLBACK_TAXONOMY_DOMAINS:
+        return None
+
+    # Deterministic selection using title/content tokens against category names.
+    text = f"{title} {content}".lower()
+    category_scores: dict[str, int] = {category: 0 for category in FALLBACK_TAXONOMY_DOMAINS}
+    for category in FALLBACK_TAXONOMY_DOMAINS:
+        tokens = re.findall(r"[a-z]+", category.lower())
+        for token in tokens:
+            if token in text:
+                category_scores[category] += 1
+
+    ranked = sorted(FALLBACK_TAXONOMY_DOMAINS, key=lambda item: category_scores[item], reverse=True)
+    return ranked[0]
+
+
+def log_classification_failure(
+    stage: str,
+    note_title: str,
+    reason: str,
+    source_path: str | None = None,
+) -> Path:
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "stage": stage,
+        "note_title": note_title,
+        "reason": reason,
+        "source_path": source_path or "",
     }
+    logs_dir = get_logs_dir()
+    log_path = logs_dir / "classification_failures.jsonl"
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    logger.warning("Classification failed in %s for %s: %s", stage, note_title, reason)
+    return log_path
+
+
+def audit_unclassified_notes(vault_root: str | Path | None = None) -> dict[str, Any]:
+    root = Path(vault_root).expanduser().resolve() if vault_root else _resolve_vault_root(create=False)
+    if root is None or not root.exists():
+        return {"has_unclassified": False, "count": 0, "notes": []}
+
+    affected_notes: list[str] = []
+    for directory in root.rglob("*"):
+        if not directory.is_dir():
+            continue
+        normalized = directory.name.strip().lower().replace(" ", "")
+        if normalized not in {"unclassified", "_unclassified"}:
+            continue
+        for note_path in directory.rglob("*.md"):
+            affected_notes.append(str(note_path.relative_to(root)))
+
+    result = {
+        "has_unclassified": bool(affected_notes),
+        "count": len(affected_notes),
+        "notes": sorted(affected_notes),
+    }
+    if affected_notes:
+        logger.warning("Vault audit found legacy unclassified notes: %s", ", ".join(sorted(affected_notes)))
+    else:
+        logger.info("Vault audit found no unclassified notes.")
+    return result
 
 
 def _build_vault_readme() -> str:
@@ -424,15 +578,29 @@ def _coerce_confidence(value: Any) -> float:
 
 def _normalize_category(category: str) -> str:
     if not category:
-        return UNCLASSIFIED_FOLDER
-    if category == UNCLASSIFIED_FOLDER:
-        return category
+        return ""
     if category in TAXONOMY:
         return category
     for known_category in TAXONOMY:
         if known_category.lower() == category.lower():
             return known_category
-    return UNCLASSIFIED_FOLDER
+    return ""
+
+
+def _normalize_subcategory(category: str, subcategory: Any) -> str | None:
+    if not isinstance(subcategory, str):
+        return None
+    candidate = subcategory.strip()
+    if not candidate:
+        return None
+
+    known_subcategories = TAXONOMY.get(category, ())
+    if candidate in known_subcategories:
+        return candidate
+    for known in known_subcategories:
+        if known.lower() == candidate.lower():
+            return known
+    return None
 
 
 def _sanitize_filename(value: str) -> str:

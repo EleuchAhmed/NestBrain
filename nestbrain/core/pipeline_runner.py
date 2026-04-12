@@ -13,6 +13,7 @@ from .knowledge_graph import KnowledgeGraphBuilder
 from .obsidian_parser import ObsidianNote, ObsidianParser
 from .ollama_client import OllamaClient
 from .paths import get_config_path, get_runs_dir
+from .vault_manager import audit_unclassified_notes
 from .zotero_sync import ZoteroCollection, ZoteroItem, ZoteroSyncClient, ZoteroSyncError
 from .v2_workflow import PipelineWorkflowV2 as PipelineWorkflow
 
@@ -129,6 +130,7 @@ class PipelineRunner:
             graph_nodes=len(graph_payload.get("nodes", [])),
             graph_edges=len(graph_payload.get("edges", [])),
             errors=workflow_result.get("errors", {}),
+            classification_audit=audit_unclassified_notes(config.vault_path),
         )
         
         self._emit(progress_callback, 100)
@@ -139,6 +141,7 @@ class PipelineRunner:
             "collections": workflow_result.get("collections", []),
             "graph": graph_payload,
             "archive_entry": archive_entry,
+            "classification_audit": archive_entry.get("classification_audit", {}),
             "created_notes": workflow_result.get("created_notes", []),
             "errors": workflow_result.get("errors", {}),
         }
@@ -228,6 +231,7 @@ class PipelineRunner:
         graph_nodes: int,
         graph_edges: int,
         errors: dict[str, str],
+        classification_audit: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create archive entry for this run."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -239,6 +243,7 @@ class PipelineRunner:
             "graph_nodes": graph_nodes,
             "graph_edges": graph_edges,
             "errors": errors,
+            "classification_audit": classification_audit or {"has_unclassified": False, "count": 0, "notes": []},
         }
 
         file_name = datetime.now().strftime("run_%Y%m%d_%H%M%S.json")

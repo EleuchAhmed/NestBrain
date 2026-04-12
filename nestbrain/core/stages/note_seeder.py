@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
 from ..note_renderer import classify_domain
 from ..utils import to_slug
-from ..vault_manager import classify_and_file
+from ..vault_manager import classify_and_file, log_classification_failure
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,15 @@ class NoteSeeder:
             write_path.write_text(rendered, encoding="utf-8")
             classify_and_file(str(write_path))
             return True
+        except ValueError as e:
+            log_classification_failure(
+                stage="note_seeder",
+                note_title=term,
+                reason=str(e),
+                source_path=str(write_path),
+            )
+            logger.error(f"Seed Maker classification failed on term '{term}': {e}")
+            return False
         except Exception as e:
             logger.error(f"Seed Maker failed on term '{term}': {e}")
             return False

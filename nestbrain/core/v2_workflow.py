@@ -260,6 +260,14 @@ class PipelineWorkflowV2:
                 status_callback=status_callback,
             )
 
+            if not note_path:
+                msg = (
+                    f"Classification failed for {collection_display_name}; note filing was skipped. "
+                    "See classification_failures.jsonl in app logs."
+                )
+                warnings.append(msg)
+                self._emit(status_callback, f"Warning: {msg}")
+
             # LAYER 3: Vault Propagation
             self._emit(status_callback, "L3: Vector Indexing")
             new_vec = self.indexer.embed_new_note(collection_slug, deep_dive_content)
@@ -274,8 +282,9 @@ class PipelineWorkflowV2:
             self.annotator.annotate_connections(collection_slug, deep_dive_content, survivors)
             
             # Update registry with note path and save
-            self.registry.set_obsidian_path(collection_slug, note_path)
-            self.registry.save()
+            if note_path:
+                self.registry.set_obsidian_path(collection_slug, note_path)
+                self.registry.save()
 
             return {"success": True, "note_path": note_path, "warnings": warnings}
 

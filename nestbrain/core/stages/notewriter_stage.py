@@ -12,7 +12,7 @@ from ..note_renderer import (
     merge_into_existing_note,
 )
 from ..utils import to_slug
-from ..vault_manager import classify_and_file
+from ..vault_manager import classify_and_file, log_classification_failure
 from ..obsidian_parser import ObsidianNote
 from ..ollama_client import OllamaClient
 
@@ -66,8 +66,19 @@ async def write_note(
         handle.write(note_content)
         temp_note_path = handle.name
 
-    final_path = Path(classify_and_file(temp_note_path))
-    return str(final_path.relative_to(vault_path))
+    try:
+        final_path = Path(classify_and_file(temp_note_path))
+        return str(final_path.relative_to(vault_path))
+    except ValueError as exc:
+        log_classification_failure(
+            stage="notewriter_stage",
+            note_title=collection_display_name,
+            reason=str(exc),
+            source_path=temp_note_path,
+        )
+        if status_callback:
+            status_callback(f"Warning: classification failed for {collection_display_name}: {exc}")
+        return ""
 
 
 async def enrich_vault_notes(

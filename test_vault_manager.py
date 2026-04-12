@@ -14,6 +14,11 @@ class StubNvidiaClient:
         return self.response
 
 
+class RaisingNvidiaClient:
+    def generate_chat_completion(self, **kwargs):
+        raise RuntimeError("NVIDIA API unavailable")
+
+
 def _patch_vault_paths(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
     config_path = tmp_path / "config.json"
     vault_root = tmp_path / "My Brain"
@@ -99,16 +104,57 @@ def test_classify_and_file_files_into_taxonomy_folder(monkeypatch, tmp_path: Pat
     assert log_payload["target_path"] == str(final_path)
 
 
-def test_classify_and_file_sends_short_notes_to_unclassified(monkeypatch, tmp_path: Path):
+def test_classify_and_file_empty_llm_response_uses_keyword_heuristic(monkeypatch, tmp_path: Path):
     _, vault_root = _patch_vault_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(vault_manager, "nvidia_client", StubNvidiaClient("{not valid json"))
+    monkeypatch.setattr(vault_manager, "nvidia_client", StubNvidiaClient(""))
 
-    source = _write_note(tmp_path, "short.md", "Too short to classify.")
+    source = _write_note(
+        tmp_path,
+        "infra-note.md",
+        "This note covers kubernetes clusters, docker images, and devops deployment pipelines in production systems.",
+    )
 
     final_path = Path(vault_manager.classify_and_file(str(source)))
 
-    assert final_path.parent == vault_root / "_Unclassified"
+    assert final_path.parent == vault_root / "Cloud Computing & Infrastructure"
     assert final_path.exists()
+    assert "unclassified" not in str(final_path).lower()
+
+
+def test_classify_and_file_no_keywords_uses_hardcoded_fallback(monkeypatch, tmp_path: Path):
+    _, vault_root = _patch_vault_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(vault_manager, "nvidia_client", StubNvidiaClient("not json"))
+
+    source = _write_note(
+        tmp_path,
+        "ambiguous-note.md",
+        "XQZ flarn blort nimbic quoras. Zinth vex lumar. Tral nix ombra pelk tunar.",
+    )
+
+    final_path = Path(vault_manager.classify_and_file(str(source)))
+
+    expected_domain = vault_manager.FALLBACK_TAXONOMY_DOMAINS[0]
+    assert final_path.parent == vault_root / expected_domain
+    assert "unclassified" not in str(final_path).lower()
+
+
+def test_no_note_is_filed_under_unclassified(monkeypatch, tmp_path: Path):
+    _, vault_root = _patch_vault_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(vault_manager, "nvidia_client", RaisingNvidiaClient())
+
+    source = _write_note(
+        tmp_path,
+        "security-note.md",
+        "Threat modeling with owasp controls and encryption standards improves application security posture.",
+    )
+
+    final_path = Path(vault_manager.classify_and_file(str(source)))
+    assert final_path.exists()
+    assert "unclassified" not in str(final_path).lower()
+
+    audit = vault_manager.audit_unclassified_notes(vault_root)
+    assert audit["has_unclassified"] is False
+    assert audit["count"] == 0
 
 
 def test_classify_and_file_renames_on_collision(monkeypatch, tmp_path: Path):
@@ -181,4 +227,4 @@ def test_get_vault_stats_counts_top_level_categories(monkeypatch, tmp_path: Path
 
     assert stats["Design & User Experience"] == 1
     assert stats["Cybersecurity"] == 1
-    assert stats["_Unclassified"] == 0
+    assert all("unclassified" not in key.lower() for key in stats)
