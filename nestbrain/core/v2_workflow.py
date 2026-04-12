@@ -17,6 +17,7 @@ from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient
 from .note_renderer import SynthesisResult
 from .nvidia_client import nvidia_client
+from .utils import to_slug
 
 # V2 Stages
 from .stages.question_planner import QuestionPlanner
@@ -125,20 +126,23 @@ class PipelineWorkflowV2:
         try:
             if not self.notebooklm:
                 self.notebooklm = NotebookLMBridge(self.app_root)
+
+            collection_slug = collection.slug or to_slug(collection.display_name or collection.name)
+            collection_display_name = collection.display_name or collection.name
             
             # Ensure registry entry exists
-            self.registry.get_or_create(collection.key, collection.name)
+            self.registry.get_or_create(collection_slug, collection_display_name)
             all_items = collection.items
             all_keys = [item.key for item in all_items]
-            new_source_keys = self.registry.get_new_sources(collection.key, all_keys)
+            new_source_keys = self.registry.get_new_sources(collection_slug, all_keys)
             new_items = [item for item in all_items if item.key in set(new_source_keys)]
             
             # NotebookLM Setup
-            notebook_id = self.registry.get_notebook_id(collection.key)
+            notebook_id = self.registry.get_notebook_id(collection_slug)
             if not notebook_id:
-                self._emit(status_callback, f"Creating NotebookLM notebook for {collection.name}")
-                notebook_id = await self.notebooklm.create_notebook(collection.name)
-                self.registry.set_notebook_id(collection.key, notebook_id)
+                self._emit(status_callback, f"Creating NotebookLM notebook for {collection_display_name}")
+                notebook_id = await self.notebooklm.create_notebook(collection_display_name)
+                self.registry.set_notebook_id(collection_slug, notebook_id)
                 self.registry.save()
 
             # Ingestion logic always runs for newly discovered sources
@@ -160,37 +164,37 @@ class PipelineWorkflowV2:
                     if ingested:
                         successful_keys.append(item.key)
                 if successful_keys:
-                    self.registry.mark_processed(collection.key, successful_keys)
+                    self.registry.mark_processed(collection_slug, successful_keys)
                     self.registry.save()
                 else:
-                    msg = f"No new sources ingested successfully for {collection.name}."
+                    msg = f"No new sources ingested successfully for {collection_display_name}."
                     warnings.append(msg)
                     self._emit(status_callback, f"Warning: {msg}")
             else:
-                self._emit(status_callback, f"No new sources to ingest for {collection.name}")
+                self._emit(status_callback, f"No new sources to ingest for {collection_display_name}")
 
             # LAYER 1: Research & Synthesis
-            self._emit(status_callback, f"L1: Planning Research for {collection.name}")
+            self._emit(status_callback, f"L1: Planning Research for {collection_display_name}")
             
             # 1. Question Planner (Architect)
             logger.debug("Building context summary from %s items", len(new_items or all_items) or 0)
             context_summary = self._build_context_summary(new_items or all_items)
-            logger.debug("Calling question_planner.generate_taxonomy for %s", collection.name)
+            logger.debug("Calling question_planner.generate_taxonomy for %s", collection_display_name)
             # Run the synchronous CPU/IO-bound function in a thread pool to avoid blocking the async event loop
             loop = asyncio.get_event_loop()
             taxonomy = await loop.run_in_executor(
                 None,
-                lambda: self.planner.generate_taxonomy(collection.name, context_summary)
+                lambda: self.planner.generate_taxonomy(collection_display_name, context_summary)
             )
             logger.debug("Received %s taxonomy questions", len(taxonomy))
             if self.planner.used_fallback:
-                msg = f"Question planner fallback used for {collection.name}: {self.planner.last_error}"
+                msg = f"Question planner fallback used for {collection_display_name}: {self.planner.last_error}"
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
             
             # 2. Q&A Loop (Researcher)
             self._emit(status_callback, f"L1: Iterative Q&A loops ({len(taxonomy)} paths)")
-            logger.debug("Creating QAndALoop instance for %s", collection.name)
+            logger.debug("Creating QAndALoop instance for %s", collection_display_name)
             qa_loop = QAndALoop(self.notebooklm)
             logger.debug("Calling execute_research with %s questions", len(taxonomy))
             qa_history = await qa_loop.execute_research(notebook_id, taxonomy)
@@ -198,25 +202,25 @@ class PipelineWorkflowV2:
             
             # 3. Master Synthesis (Author)
             self._emit(status_callback, "L1: Synthesizing Master Note")
-            master_note_content = self.synthesizer.synthesize(collection.name, qa_history)
+            master_note_content = self.synthesizer.synthesize(collection_display_name, qa_history)
             if self.synthesizer.used_fallback:
-                msg = f"Master synthesizer fallback used for {collection.name}: {self.synthesizer.last_error}"
+                msg = f"Master synthesizer fallback used for {collection_display_name}: {self.synthesizer.last_error}"
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
 
             deep_dive_content = master_note_content
             if self.synthesizer.used_fallback:
-                deep_dive_content = self._build_structured_deep_dive(collection.name, qa_history)
+                deep_dive_content = self._build_structured_deep_dive(collection_display_name, qa_history)
             
             # LAYER 2: Entity Growth
             self._emit(status_callback, "L2: Extracting knowledge entities")
             entities = self.extractor.extract_entities(master_note_content)
             if self.extractor.used_fallback:
-                msg = f"Entity extractor fallback used for {collection.name}: {self.extractor.last_error}"
+                msg = f"Entity extractor fallback used for {collection_display_name}: {self.extractor.last_error}"
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
             if not entities:
-                msg = f"No entities extracted for {collection.name}; mini-note creation skipped."
+                msg = f"No entities extracted for {collection_display_name}; mini-note creation skipped."
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
             entities = self._dedupe_entities(entities)
@@ -224,7 +228,7 @@ class PipelineWorkflowV2:
             
             for term in entities:
                 self._emit(status_callback, f"L2: Seeding/Patching entity '{term}'")
-                self.seeder.process_extracted_term(term, deep_dive_content, collection.name)
+                self.seeder.process_extracted_term(term, deep_dive_content, collection_display_name)
 
             deep_dive_content = self.synthesizer.weave_inline_wikilinks(
                 deep_dive_content,
@@ -236,7 +240,7 @@ class PipelineWorkflowV2:
             # Save a structured note into the standard vault hierarchy.
             synthesis_payload = SynthesisResult(
                 academic_synthesis=(
-                    f"# {collection.name}\n\n"
+                    f"# {collection_display_name}\n\n"
                     "Auto-generated by PipelineWorkflowV2. Detailed synthesis is in the Deep Dive section."
                 ),
                 conceptual_deep_dive=deep_dive_content,
@@ -247,9 +251,10 @@ class PipelineWorkflowV2:
             )
             items_dict = [asdict(item) for item in all_items]
             note_path = await write_note(
-                collection.name,
-                items_dict,
-                synthesis_payload,
+                collection_slug=collection_slug,
+                collection_display_name=collection_display_name,
+                items=items_dict,
+                synthesis=synthesis_payload,
                 media_paths={},
                 vault_path=vault_path,
                 status_callback=status_callback,
@@ -257,7 +262,7 @@ class PipelineWorkflowV2:
 
             # LAYER 3: Vault Propagation
             self._emit(status_callback, "L3: Vector Indexing")
-            new_vec = self.indexer.embed_new_note(collection.name, deep_dive_content)
+            new_vec = self.indexer.embed_new_note(collection_slug, deep_dive_content)
             
             self._emit(status_callback, "L3: Semantic K-NN Search")
             matches = self.indexer.find_similar_notes(new_vec, top_k=5)
@@ -266,16 +271,16 @@ class PipelineWorkflowV2:
             survivors = self.auditor.audit_connections(deep_dive_content, matches)
             
             self._emit(status_callback, "L3: Cross-annotating Graph")
-            self.annotator.annotate_connections(collection.name, deep_dive_content, survivors)
+            self.annotator.annotate_connections(collection_slug, deep_dive_content, survivors)
             
             # Update registry with note path and save
-            self.registry.set_obsidian_path(collection.key, note_path)
+            self.registry.set_obsidian_path(collection_slug, note_path)
             self.registry.save()
 
             return {"success": True, "note_path": note_path, "warnings": warnings}
 
         except NotebookLMAuthRequiredError as e:
-            msg = f"NotebookLM authentication required for {collection.name}: {e}"
+            msg = f"NotebookLM authentication required for {collection_display_name}: {e}"
             warnings.append(msg)
             self._emit(status_callback, f"Warning: {msg}")
             logger.warning(msg)

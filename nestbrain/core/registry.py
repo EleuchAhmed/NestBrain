@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from .utils import to_slug
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,16 +40,23 @@ class PipelineRegistry:
             return
         
         try:
-            raw = json.loads(self.registry_file.read_text(encoding="utf-8"))
+            registry_text = self.registry_file.read_text(encoding="utf-8")
+            raw = json.loads(registry_text)
             if not isinstance(raw, dict):
                 raise ValueError("Registry must be a JSON object")
+
+            migrated_raw, migrated = self._migrate_legacy_keys(raw)
             self.data = {
                 key: CollectionRegistryEntry(**value)
-                for key, value in raw.items()
+                for key, value in migrated_raw.items()
             }
+
+            if migrated:
+                self.save()
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             # Log corruption but continue with empty registry
             logger.warning("Registry file corrupted, resetting: %s", e)
+            self._backup_corrupted_registry()
             self.data = {}
 
     def save(self) -> None:
@@ -56,45 +65,121 @@ class PipelineRegistry:
         raw = {key: asdict(entry) for key, entry in self.data.items()}
         self.registry_file.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
-    def get_or_create(self, collection_key: str, collection_name: str) -> CollectionRegistryEntry:
+    def get_or_create(self, collection_slug: str, collection_name: str) -> CollectionRegistryEntry:
         """Get existing or create new registry entry."""
-        if collection_key not in self.data:
-            self.data[collection_key] = CollectionRegistryEntry(name=collection_name)
-        return self.data[collection_key]
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug not in self.data:
+            self.data[resolved_slug] = CollectionRegistryEntry(name=collection_name)
+        else:
+            self.data[resolved_slug].name = collection_name
+        return self.data[resolved_slug]
 
-    def mark_processed(self, collection_key: str, source_keys: list[str]) -> None:
+    def mark_processed(self, collection_slug: str, source_keys: list[str]) -> None:
         """Mark source keys as processed for a collection."""
-        if collection_key in self.data:
-            current = set(self.data[collection_key].processed_sources)
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug in self.data:
+            current = set(self.data[resolved_slug].processed_sources)
             current.update(source_keys)
-            self.data[collection_key].processed_sources = sorted(current)
-            self.data[collection_key].last_updated = datetime.now().isoformat()
+            self.data[resolved_slug].processed_sources = sorted(current)
+            self.data[resolved_slug].last_updated = datetime.now().isoformat()
 
-    def get_new_sources(self, collection_key: str, all_source_keys: list[str]) -> list[str]:
+    def get_new_sources(self, collection_slug: str, all_source_keys: list[str]) -> list[str]:
         """Get list of new sources not yet processed."""
-        if collection_key not in self.data:
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug not in self.data:
             return all_source_keys
         
-        processed = set(self.data[collection_key].processed_sources)
+        processed = set(self.data[resolved_slug].processed_sources)
         return [key for key in all_source_keys if key not in processed]
 
-    def get_notebook_id(self, collection_key: str) -> str:
+    def get_notebook_id(self, collection_slug: str) -> str:
         """Get cached notebook ID for this collection."""
-        entry = self.data.get(collection_key)
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        entry = self.data.get(resolved_slug)
         return entry.notebook_id if entry else ""
 
-    def set_notebook_id(self, collection_key: str, notebook_id: str) -> None:
+    def set_notebook_id(self, collection_slug: str, notebook_id: str) -> None:
         """Cache notebook ID for this collection."""
-        if collection_key not in self.data:
-            self.data[collection_key] = CollectionRegistryEntry(name="Unknown")
-        self.data[collection_key].notebook_id = notebook_id
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug not in self.data:
+            self.data[resolved_slug] = CollectionRegistryEntry(name="Unknown")
+        self.data[resolved_slug].notebook_id = notebook_id
 
-    def set_obsidian_path(self, collection_key: str, path: str) -> None:
+    def set_obsidian_path(self, collection_slug: str, path: str) -> None:
         """Cache Obsidian note path for this collection."""
-        if collection_key in self.data:
-            self.data[collection_key].obsidian_path = path
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug in self.data:
+            self.data[resolved_slug].obsidian_path = path
 
-    def set_media_path(self, collection_key: str, media_type: str, path: str) -> None:
+    def set_media_path(self, collection_slug: str, media_type: str, path: str) -> None:
         """Cache media artifact path (audio/video)."""
-        if collection_key in self.data:
-            self.data[collection_key].media_paths[media_type] = path
+        resolved_slug = self._resolve_slug_key(collection_slug)
+        if resolved_slug in self.data:
+            self.data[resolved_slug].media_paths[media_type] = path
+
+    def _migrate_legacy_keys(self, raw: dict[str, object]) -> tuple[dict[str, dict[str, object]], bool]:
+        """Migrate legacy registry keys to slug form once on startup."""
+        migrated = False
+        normalized: dict[str, dict[str, object]] = {}
+
+        for key, value in raw.items():
+            if not isinstance(value, dict):
+                migrated = True
+                continue
+
+            payload = dict(value)
+            display_name = str(payload.get("name") or "").strip() or str(key).strip() or "Untitled Collection"
+            payload["name"] = display_name
+            slug_key = to_slug(display_name)
+
+            if key != slug_key or " " in key:
+                migrated = True
+
+            existing = normalized.get(slug_key)
+            if existing is not None:
+                migrated = True
+                existing_sources = set(existing.get("processed_sources", []) or [])
+                incoming_sources = set(payload.get("processed_sources", []) or [])
+                payload["processed_sources"] = sorted(existing_sources.union(incoming_sources))
+
+                payload["notebook_id"] = str(existing.get("notebook_id") or payload.get("notebook_id") or "")
+                payload["obsidian_path"] = str(existing.get("obsidian_path") or payload.get("obsidian_path") or "")
+
+                existing_media = existing.get("media_paths") if isinstance(existing.get("media_paths"), dict) else {}
+                incoming_media = payload.get("media_paths") if isinstance(payload.get("media_paths"), dict) else {}
+                payload["media_paths"] = {**existing_media, **incoming_media}
+
+                payload["last_updated"] = str(existing.get("last_updated") or payload.get("last_updated") or "")
+
+            normalized[slug_key] = payload
+
+        return normalized, migrated
+
+    def _resolve_slug_key(self, collection_slug: str) -> str:
+        """Resolve slug key and migrate older key forms lazily on first access."""
+        requested_slug = to_slug(collection_slug)
+        if requested_slug in self.data:
+            return requested_slug
+
+        for existing_key, entry in list(self.data.items()):
+            if to_slug(entry.name) != requested_slug:
+                continue
+            if existing_key == requested_slug:
+                return requested_slug
+            self.data[requested_slug] = entry
+            del self.data[existing_key]
+            self.save()
+            return requested_slug
+
+        return requested_slug
+
+    def _backup_corrupted_registry(self) -> None:
+        """Persist a backup of a corrupted registry file for forensic debugging."""
+        if not self.registry_file.exists():
+            return
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup = self.registry_file.with_name(f"pipeline-registry.corrupt_{timestamp}.json")
+            backup.write_text(self.registry_file.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception:
+            logger.warning("Failed to backup corrupted registry at %s", self.registry_file)

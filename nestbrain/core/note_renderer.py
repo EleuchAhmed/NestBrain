@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from dataclasses import dataclass, field
+import re
 from typing import Any
 from .utils import to_slug
 
@@ -178,12 +179,13 @@ def merge_into_existing_note(
     
     now = datetime.now().isoformat()
     updated = existing_content
+
+    def _replace_frontmatter_field(content: str, field_name: str, value: str) -> str:
+        pattern = rf"(?m)^{re.escape(field_name)}:\s*.*$"
+        return re.sub(pattern, f"{field_name}: {value}", content)
     
     # Update timestamp if present
-    updated = updated.replace(
-        "last_updated:",
-        f"last_updated: {now}",
-    )
+    updated = _replace_frontmatter_field(updated, "last_updated", now)
     
     # Append to sections instead of replacing
     sections = {
@@ -214,15 +216,9 @@ def merge_into_existing_note(
     
     # Update media paths if provided
     if media_paths.get("video"):
-        updated = updated.replace(
-            "notebooklm_video:",
-            f"notebooklm_video: {media_paths['video']}",
-        )
+        updated = _replace_frontmatter_field(updated, "notebooklm_video", str(media_paths["video"]))
     if media_paths.get("audio"):
-        updated = updated.replace(
-            "notebooklm_audio:",
-            f"notebooklm_audio: {media_paths['audio']}",
-        )
+        updated = _replace_frontmatter_field(updated, "notebooklm_audio", str(media_paths["audio"]))
     
     # Append to update log
     log_idx = updated.rfind("|------|")

@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .knowledge_graph import KnowledgeGraphBuilder
-from .obsidian_parser import ObsidianParser
+from .obsidian_parser import ObsidianNote, ObsidianParser
 from .ollama_client import OllamaClient
 from .paths import get_config_path, get_runs_dir
-from .zotero_sync import ZoteroSyncClient, ZoteroSyncError
+from .zotero_sync import ZoteroCollection, ZoteroItem, ZoteroSyncClient, ZoteroSyncError
 from .v2_workflow import PipelineWorkflowV2 as PipelineWorkflow
 
 
@@ -114,9 +114,11 @@ class PipelineRunner:
         
         # Build knowledge graph from workflow results
         self._emit(status_callback, "Building knowledge graph")
+        notes = self._coerce_notes(workflow_result.get("notes", []))
+        collections = self._coerce_collections(workflow_result.get("collections", []))
         graph_payload = graph_builder.build(
-            notes=workflow_result.get("notes", []),
-            collections=workflow_result.get("collections", []),
+            notes=notes,
+            collections=collections,
             semantic_links=workflow_result.get("semantic_links", [])
         )
         
@@ -140,6 +142,73 @@ class PipelineRunner:
             "created_notes": workflow_result.get("created_notes", []),
             "errors": workflow_result.get("errors", {}),
         }
+
+    def _coerce_notes(self, payload: list[Any]) -> list[ObsidianNote]:
+        notes: list[ObsidianNote] = []
+        for item in payload:
+            if isinstance(item, ObsidianNote):
+                notes.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            notes.append(
+                ObsidianNote(
+                    path=str(item.get("path", "")),
+                    title=str(item.get("title", "Untitled")),
+                    tags=[str(tag) for tag in item.get("tags", []) if str(tag).strip()],
+                    wikilinks=[str(link) for link in item.get("wikilinks", []) if str(link).strip()],
+                    last_modified=str(item.get("last_modified", "")),
+                    metadata=item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {},
+                    content=str(item.get("content", "")),
+                    summary=str(item.get("summary", "")),
+                    semantic_tags=[str(tag) for tag in item.get("semantic_tags", []) if str(tag).strip()],
+                )
+            )
+        return notes
+
+    def _coerce_collections(self, payload: list[Any]) -> list[ZoteroCollection]:
+        collections: list[ZoteroCollection] = []
+        for item in payload:
+            if isinstance(item, ZoteroCollection):
+                collections.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+
+            raw_items = item.get("items", [])
+            parsed_items: list[ZoteroItem] = []
+            for source in raw_items if isinstance(raw_items, list) else []:
+                if isinstance(source, ZoteroItem):
+                    parsed_items.append(source)
+                    continue
+                if not isinstance(source, dict):
+                    continue
+                parsed_items.append(
+                    ZoteroItem(
+                        key=str(source.get("key", "")),
+                        title=str(source.get("title", "Untitled Reference")),
+                        item_type=str(source.get("item_type", "item")),
+                        creators=[str(creator) for creator in source.get("creators", []) if str(creator).strip()],
+                        date=str(source.get("date", "")),
+                        url=str(source.get("url", "")),
+                        abstract=str(source.get("abstract", "")),
+                        collection_key=str(source.get("collection_key", "")),
+                    )
+                )
+
+            collections.append(
+                ZoteroCollection(
+                    key=str(item.get("key", "")),
+                    name=str(item.get("name") or item.get("display_name") or "Untitled Collection"),
+                    slug=str(item.get("slug", "")),
+                    display_name=str(item.get("display_name", "")),
+                    item_count=int(item.get("item_count", len(parsed_items)) or len(parsed_items)),
+                    last_modified=str(item.get("last_modified", "")),
+                    status=str(item.get("status", "Idle")),
+                    items=parsed_items,
+                )
+            )
+        return collections
 
     def load_archive(self) -> list[dict[str, Any]]:
         """Load archived pipeline runs."""

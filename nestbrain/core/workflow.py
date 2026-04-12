@@ -13,6 +13,7 @@ from .obsidian_parser import ObsidianParser
 from .paths import get_registry_path
 from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient, ZoteroSyncError
+from .utils import to_slug
 
 from .stages.notebooklm_stage import (
     create_notebook,
@@ -208,12 +209,13 @@ class PipelineWorkflow:
             
             items_dict = [asdict(item) for item in all_items]
             note_path = await write_note(
-                collection.name,
-                items_dict,
-                synthesis,
-                media_paths,
-                vault_path,
-                status_callback,
+                collection_slug=to_slug(collection.name),
+                collection_display_name=collection.name,
+                items=items_dict,
+                synthesis=synthesis,
+                media_paths=media_paths,
+                vault_path=vault_path,
+                status_callback=status_callback,
             )
             
             # Update registry

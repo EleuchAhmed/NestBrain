@@ -18,7 +18,8 @@ from ..ollama_client import OllamaClient
 
 
 async def write_note(
-    collection_name: str,
+    collection_slug: str,
+    collection_display_name: str,
     items: list[dict[str, Any]],
     synthesis: SynthesisResult,
     media_paths: dict[str, str],
@@ -28,7 +29,8 @@ async def write_note(
     """Write or merge note to Obsidian vault.
     
     Args:
-        collection_name: Name of the collection
+        collection_slug: Normalized collection slug used for file paths
+        collection_display_name: Human-readable collection name used in note labels
         items: List of items (as dicts)
         synthesis: Synthesis result
         media_paths: Dictionary with media artifact paths
@@ -41,8 +43,8 @@ async def write_note(
     if status_callback:
         status_callback("✍️ Writing note to Obsidian vault...")
     
-    domain = classify_domain(collection_name)
-    slug = to_slug(collection_name)
+    domain = classify_domain(collection_display_name)
+    slug = collection_slug.strip() or to_slug(collection_display_name)
     legacy_dir = Path(vault_path) / "20_Concepts" / domain
     legacy_dir.mkdir(parents=True, exist_ok=True)
     legacy_note_path = legacy_dir / f"{slug}.md"
@@ -51,7 +53,7 @@ async def write_note(
         existing = legacy_note_path.read_text(encoding="utf-8")
         note_content = merge_into_existing_note(existing, items, synthesis, media_paths, items)
     else:
-        note_content = render_master_note(collection_name, items, synthesis, media_paths)
+        note_content = render_master_note(collection_display_name, items, synthesis, media_paths)
     
     with tempfile.NamedTemporaryFile(
         "w",

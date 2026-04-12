@@ -1,3 +1,5 @@
+import asyncio
+import json
 from pathlib import Path
 
 from nestbrain.core.note_renderer import SynthesisResult, merge_into_existing_note, slugify
@@ -5,6 +7,8 @@ from nestbrain.core.utils import to_slug
 from nestbrain.core.pipeline_runner import PipelineRunner
 from nestbrain.core.registry import PipelineRegistry
 from nestbrain.core.stages.notebooklm_stage import generate_media
+from nestbrain.core.stages.notewriter_stage import write_note
+from nestbrain.core.zotero_sync import ZoteroSyncClient
 
 
 class FakeNotebookLMBridge:
@@ -153,3 +157,70 @@ def test_pipeline_runner_coerces_payloads_for_graph_building():
 
     assert notes[0].title == "Graph Note"
     assert collections[0].items[0].title == "Reference Title"
+
+
+def test_zotero_sync_normalizes_collection_slug_and_display_name():
+    client = ZoteroSyncClient(host="http://localhost:9999")
+    client._request_json = lambda _paths: [
+        {
+            "data": {
+                "key": "COLL1234",
+                "name": "Large Language Models",
+                "numItems": 0,
+                "dateModified": "2026-04-12 10:00:00",
+            }
+        }
+    ]
+
+    collections = client.get_collections()
+
+    assert len(collections) == 1
+    assert collections[0].slug == "large-language-models"
+    assert collections[0].display_name == "Large Language Models"
+
+
+def test_registry_migrates_legacy_collection_name_keys_to_slug(tmp_path: Path):
+    registry_file = tmp_path / "pipeline-registry.json"
+    registry_file.write_text(
+        json.dumps(
+            {
+                "Large Language Models": {
+                    "name": "Large Language Models",
+                    "notebook_id": "nb-123",
+                    "obsidian_path": "20_Concepts\\Systems Design\\large-language-models.md",
+                    "processed_sources": ["SRC1"],
+                    "media_paths": {},
+                    "last_updated": "2026-04-12T10:00:00",
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    registry = PipelineRegistry(registry_file)
+
+    assert "large-language-models" in registry.data
+    assert "Large Language Models" not in registry.data
+    assert registry.get_notebook_id("large-language-models") == "nb-123"
+
+
+def test_write_note_uses_slug_in_vault_path(tmp_path: Path, monkeypatch):
+    from nestbrain.core.stages import notewriter_stage as notewriter_module
+
+    expected_target = tmp_path / "20_Concepts" / "Systems Design" / "large-language-models.md"
+    monkeypatch.setattr(notewriter_module, "classify_and_file", lambda _path: str(expected_target))
+
+    note_path = asyncio.run(
+        write_note(
+            collection_slug="large-language-models",
+            collection_display_name="Large Language Models",
+            items=[],
+            synthesis=SynthesisResult(academic_synthesis="summary"),
+            media_paths={},
+            vault_path=str(tmp_path),
+        )
+    )
+
+    assert "large-language-models.md" in note_path
+    assert "Large Language Models" not in note_path

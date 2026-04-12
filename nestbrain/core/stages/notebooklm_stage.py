@@ -155,5 +155,23 @@ async def generate_media(
     except Exception as e:
         if status_callback:
             status_callback(f"⚠️ Video generation failed: {e}")
+
+    try:
+        if status_callback:
+            status_callback("🎧 Generating audio deep dive...")
+
+        audio_result = await bridge.generate_media(notebook_id, "audio")
+        if audio_result.get("status") == "success" and audio_result.get("artifactId"):
+            audio_path = Path(vault_path) / "assets" / f"{slugify(collection_name)}-overview.wav"
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+
+            downloaded = await bridge.download_media(
+                notebook_id, "audio", audio_result["artifactId"], str(audio_path)
+            )
+            if downloaded:
+                media_paths["audio"] = f"assets/{audio_path.name}"
+    except Exception as e:
+        if status_callback:
+            status_callback(f"⚠️ Audio generation failed: {e}")
     
     return media_paths

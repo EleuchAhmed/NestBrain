@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from .utils import to_slug
+
 
 class ZoteroSyncError(Exception):
     pass
@@ -32,8 +34,18 @@ class ZoteroCollection:
     name: str
     item_count: int
     last_modified: str
+    slug: str = ""
+    display_name: str = ""
     status: str = "Idle"
     items: list[ZoteroItem] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # Keep backward-compatible name while exposing explicit normalized/display fields.
+        if not self.display_name:
+            self.display_name = self.name or "Untitled Collection"
+        self.name = self.display_name
+        if not self.slug:
+            self.slug = to_slug(self.display_name)
 
 
 class ZoteroSyncClient:
@@ -75,21 +87,23 @@ class ZoteroSyncClient:
         for raw in data:
             payload = raw.get("data", raw) if isinstance(raw, dict) else {}
             key = str(payload.get("key", "")).strip()
-            name = str(payload.get("name") or payload.get("collectionName") or "Untitled Collection")
+            display_name = str(payload.get("name") or payload.get("collectionName") or "Untitled Collection")
             item_count = int(payload.get("numItems", 0) or 0)
             modified = self._normalize_modified(payload)
             if key:
                 collections.append(
                     ZoteroCollection(
                         key=key,
-                        name=name,
+                        name=display_name,
+                        slug=to_slug(display_name),
+                        display_name=display_name,
                         item_count=item_count,
                         last_modified=modified,
                         status="Idle",
                     )
                 )
 
-        return sorted(collections, key=lambda collection: collection.name.lower())
+        return sorted(collections, key=lambda collection: collection.display_name.lower())
 
     def get_items_for_collection(self, collection_key: str) -> list[ZoteroItem]:
         endpoint_options: list[str] = []
@@ -182,13 +196,15 @@ class ZoteroSyncClient:
                     return collection
 
         # Fallback: return most likely match by exact name
-        exact_name_matches = [collection for collection in collections if collection.name.strip().lower() == clean_name.lower()]
+        exact_name_matches = [collection for collection in collections if collection.display_name.strip().lower() == clean_name.lower()]
         if exact_name_matches:
             return exact_name_matches[0]
 
         return ZoteroCollection(
             key=created_key or "",
             name=clean_name,
+            slug=to_slug(clean_name),
+            display_name=clean_name,
             item_count=0,
             last_modified=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             status="Idle",
