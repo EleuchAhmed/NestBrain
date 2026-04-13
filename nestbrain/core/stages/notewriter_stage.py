@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Callable
 from ..note_renderer import (
     SynthesisResult,
-    classify_domain,
     render_master_note,
     merge_into_existing_note,
 )
@@ -42,16 +41,10 @@ async def write_note(
     """
     if status_callback:
         status_callback("✍️ Writing note to Obsidian vault...")
-    
-    domain = classify_domain(collection_display_name)
+
     slug = collection_slug.strip() or to_slug(collection_display_name)
-    legacy_dir = Path(vault_path) / "20_Concepts" / domain
-    legacy_dir.mkdir(parents=True, exist_ok=True)
-    legacy_note_path = legacy_dir / f"{slug}.md"
 
     resolved_existing = find_note_path(collection_display_name, vault_path) or find_note_path(slug, vault_path)
-    if resolved_existing is None and legacy_note_path.exists():
-        resolved_existing = legacy_note_path
 
     if resolved_existing is not None:
         existing = resolved_existing.read_text(encoding="utf-8")

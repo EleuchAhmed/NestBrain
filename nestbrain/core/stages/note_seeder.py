@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from datetime import datetime, timezone
 from ..nvidia_client import nvidia_client
-from ..note_renderer import classify_domain, merge_note
+from ..note_renderer import merge_note
 from ..utils import to_slug
 from ..vault_manager import classify_and_file, log_classification_failure, find_note_path
 
@@ -26,13 +26,9 @@ class NoteSeeder:
         self.link_overrides: dict[str, str] = {}
         self.last_result: dict[str, object] = {}
 
-    def _get_note_path(self, term: str, master_note_context: str = "", subject_title: str = "") -> Path:
-        """Helper to get a safe Markdown path for an entity term in concept taxonomy."""
-        classification_context = f"{term} {subject_title} {master_note_context[:800]}"
-        domain = classify_domain(classification_context)
-
-        safe_slug = to_slug(term)
-        return self.vault_path / "20_Concepts" / domain / f"{safe_slug}.md"
+    def _build_seed_file_path(self, term: str) -> Path:
+        """Create a hidden, root-level staging filename for new seed notes."""
+        return self.vault_path / f".nestbrain_seeder.{to_slug(term)}.md"
 
     def _resolve_existing_note_path(self, note_title: str) -> Path | None:
         if not note_title.strip():
@@ -42,16 +38,13 @@ class NoteSeeder:
         if resolved is not None:
             return resolved
 
-        fallback = self._get_note_path(note_title)
-        return fallback if fallback.exists() else None
+        return find_note_path(to_slug(note_title), self.vault_path)
 
     def process_extracted_term(self, term: str, master_note_context: str, subject_title: str) -> bool:
         """
         Determines if a note exists. If not, spawns The Seed Maker.
         If yes, spawns The Surgeon to carefully append new context.
         """
-        note_path = self._get_note_path(term, master_note_context, subject_title)
-
         existing_notes = self._scan_existing_notes_index()
         semantic_result = self._semantic_duplicate_check(term, existing_notes)
 
@@ -105,53 +98,55 @@ class NoteSeeder:
             logger.info("Seeder merged '%s' into existing note: %s", term, matched_note or target_path.stem)
             return True
 
-        if not note_path.exists():
-            # Brand new concept -> Seed Maker
-            logger.info(f"Term '{term}' not found in vault. Spawning The Seed Maker.")
-            created = self._seed_new_note(term, master_note_context, subject_title, note_path)
-            if created:
-                self.link_overrides[term] = term
-            self.last_result = {
-                "action": "created" if created else "failed",
-                "source": subject_title,
-                "existing": None,
-                "note_path": str(note_path),
-                "title": term,
-            }
-            self._append_seeder_log(
-                {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "entity": term,
-                    "action": "created" if created else "failed",
-                    "matched_note": None,
-                    "reason": "No semantic duplicate found in vault index.",
-                }
-            )
-            return created
-        else:
+        existing_path = self._resolve_existing_note_path(term)
+        if existing_path is not None:
             logger.info(f"Term '{term}' already exists by resolved path. Appending new context.")
-            merge_note(str(note_path), master_note_context, subject_title)
-            self._upsert_alias_on_note(note_path, term)
+            merge_note(str(existing_path), master_note_context, subject_title)
+            self._upsert_alias_on_note(existing_path, term)
             self.link_overrides[term] = term
             self.last_result = {
                 "action": "merge",
                 "source": subject_title,
-                "existing": note_path.stem,
-                "note_path": str(note_path),
-                "title": note_path.stem,
+                "existing": existing_path.stem,
+                "note_path": str(existing_path),
+                "title": existing_path.stem,
             }
             self._append_seeder_log(
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "entity": term,
                     "action": "merge",
-                    "existing": note_path.stem,
+                    "existing": existing_path.stem,
                     "source": subject_title,
-                    "matched_note": note_path.stem,
+                    "matched_note": existing_path.stem,
                     "reason": "Resolved canonical note path already exists.",
                 }
             )
             return True
+
+        # Brand new concept -> Seed Maker
+        seed_path = self._build_seed_file_path(term)
+        logger.info(f"Term '{term}' not found in vault. Spawning The Seed Maker.")
+        created = self._seed_new_note(term, master_note_context, subject_title, seed_path)
+        if created:
+            self.link_overrides[term] = term
+        self.last_result = {
+            "action": "created" if created else "failed",
+            "source": subject_title,
+            "existing": None,
+            "note_path": str(seed_path),
+            "title": term,
+        }
+        self._append_seeder_log(
+            {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "entity": term,
+                "action": "created" if created else "failed",
+                "matched_note": None,
+                "reason": "No semantic duplicate found in vault index.",
+            }
+        )
+        return created
 
     def get_link_overrides(self) -> dict[str, str]:
         return dict(self.link_overrides)
@@ -185,7 +180,6 @@ class NoteSeeder:
                 temperature=0.3
             )
             rendered = self._upsert_aliases_in_markdown(response_text.strip(), [term])
-            write_path.parent.mkdir(parents=True, exist_ok=True)
             write_path.write_text(rendered, encoding="utf-8")
             classify_and_file(str(write_path))
             return True
