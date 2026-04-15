@@ -13,7 +13,7 @@ from ..note_renderer import (
 from ..utils import to_slug
 from ..vault_manager import classify_and_file, log_classification_failure, find_note_path
 from ..note_parser import MarkdownNote
-from ..ollama_client import OllamaClient
+from ..ollama_client import NvidiaLLMClient
 
 
 async def write_note(
@@ -92,7 +92,7 @@ async def write_note(
 
 async def enrich_vault_notes(
     notes: list[MarkdownNote],
-    ollama: OllamaClient,
+    ollama: NvidiaLLMClient,
     progress_callback: Callable[[int], None] | None = None,
     status_callback: Callable[[str], None] | None = None,
 ) -> None:
@@ -100,7 +100,7 @@ async def enrich_vault_notes(
     
     Args:
         notes: List of MarkdownNote objects to enrich
-        ollama: OllamaClient for synthesis
+        ollama: NvidiaLLMClient for synthesis
         progress_callback: Optional progress callback (0-100)
         status_callback: Optional status callback
     """
@@ -128,7 +128,7 @@ async def enrich_vault_notes(
 async def suggest_semantic_links(
     note_titles: list[str],
     context_blob: str,
-    ollama: OllamaClient,
+    ollama: NvidiaLLMClient,
     status_callback: Callable[[str], None] | None = None,
 ) -> list[dict[str, str]]:
     """Suggest semantic links (wikilinks) between vault notes.
@@ -136,7 +136,7 @@ async def suggest_semantic_links(
     Args:
         note_titles: List of note titles to link
         context_blob: Combined context from notes
-        ollama: OllamaClient for suggestions
+        ollama: NvidiaLLMClient for suggestions
         status_callback: Optional progress callback
         
     Returns:

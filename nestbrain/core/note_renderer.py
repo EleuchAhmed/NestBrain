@@ -176,16 +176,23 @@ def merge_into_existing_note(
     media_paths: dict[str, str],
     all_items: list[dict[str, Any]],
 ) -> str:
-    """Merge new synthesis into existing note without overwriting."""
+    """Merge new synthesis into existing note without overwriting.
+    Safely finds section bounds to append updates without breaking customized notes.
+    """
     
     now = datetime.now().isoformat()
     updated = existing_content
 
     def _replace_frontmatter_field(content: str, field_name: str, value: str) -> str:
         pattern = rf"(?m)^{re.escape(field_name)}:\s*.*$"
-        return re.sub(pattern, f"{field_name}: {value}", content)
+        if re.search(pattern, content):
+            return re.sub(pattern, f"{field_name}: {value}", content)
+        # Add to existing frontmatter if field is missing
+        if content.startswith("---\n"):
+            return content.replace("---\n", f"---\n{field_name}: {value}\n", 1)
+        return content
     
-    # Update timestamp if present
+    # Update timestamp if present or inject it
     updated = _replace_frontmatter_field(updated, "last_updated", now)
     
     # Append to sections instead of replacing
@@ -201,20 +208,27 @@ def merge_into_existing_note(
         if not new_content:
             continue
         enrichment = f"\n\n### Updated: {now.split('T')[0]}\n\n{new_content}"
-        if section_header in updated:
-            idx = updated.find(section_header)
-            next_section_idx = updated.find("\n---\n", idx + len(section_header))
-            if next_section_idx > -1:
-                updated = updated[:next_section_idx] + enrichment + updated[next_section_idx:]
-                continue
-        updated = updated.rstrip() + f"\n\n{section_header}\n{enrichment}\n"
+        
+        header_idx = updated.find(section_header)
+        if header_idx != -1:
+            search_start = header_idx + len(section_header)
+            # Find the next H1, H2, or horizontal rule to mark the end of this section
+            match = re.search(r'\n(?:---|##? )', updated[search_start:])
+            next_idx = search_start + match.start() if match else len(updated)
+            
+            # Insert enrichment right before the next section
+            updated = updated[:next_idx].rstrip() + enrichment + "\n\n" + updated[next_idx:].lstrip("\n")
+        else:
+            updated = updated.rstrip() + f"\n\n{section_header}\n{enrichment}\n"
     
     # Update sources table
     if "## 📚 Sources Index" in updated:
         old_table_start = updated.find("## 📚 Sources Index") + len("## 📚 Sources Index")
-        old_table_end = updated.find("---", old_table_start)
-        new_table = "\n\n" + build_sources_table(all_items) + "\n"
-        updated = updated[:old_table_start] + new_table + updated[old_table_end:]
+        match = re.search(r'\n(?:---|##? )', updated[old_table_start:])
+        old_table_end = old_table_start + match.start() if match else len(updated)
+        
+        new_table = "\n\n" + build_sources_table(all_items) + "\n\n"
+        updated = updated[:old_table_start] + new_table + updated[old_table_end:].lstrip("\n")
     
     # Update media paths if provided
     if media_paths.get("video"):
@@ -225,9 +239,16 @@ def merge_into_existing_note(
     # Append to update log
     log_idx = updated.rfind("|------|")
     if log_idx > -1:
-        next_line_idx = updated.find("\n", log_idx) + 1
+        next_line_idx = updated.find("\n", log_idx)
+        next_line_idx = next_line_idx + 1 if next_line_idx != -1 else len(updated)
+        
         new_log_row = f"| {now.split('T')[0]} | {', '.join(item.get('key', 'N/A') for item in new_items)} | Added {len(new_items)} new source(s), enriched all sections |\n"
         updated = updated[:next_line_idx] + new_log_row + updated[next_line_idx:]
+    else:
+        # Create log if it somehow got removed
+        log_header = f"\n\n## 🕐 Update Log\n\n| Date | Sources Added | Summary of Changes |\n|------|--------------|-------------------|\n"
+        new_log_row = f"| {now.split('T')[0]} | {', '.join(item.get('key', 'N/A') for item in new_items)} | Added {len(new_items)} new source(s), enriched all sections |\n"
+        updated = updated.rstrip() + log_header + new_log_row
     
     return updated
 

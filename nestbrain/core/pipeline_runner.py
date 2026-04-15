@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from .knowledge_graph import KnowledgeGraphBuilder
 from .note_parser import MarkdownNote
-from .ollama_client import OllamaClient
+from .ollama_client import NvidiaLLMClient
 from .paths import get_config_path, get_runs_dir
 from .vault_manager import audit_unclassified_notes
 from .zotero_sync import ZoteroCollection, ZoteroItem, ZoteroSyncClient, ZoteroSyncError
@@ -100,7 +100,7 @@ class PipelineRunner:
             library_id=config.zotero_library_id,
             api_key=config.zotero_api_key,
         )
-        ollama = OllamaClient(host=config.ollama_host, api_key=config.nvidia_api_key)
+        ollama = NvidiaLLMClient(host=config.ollama_host, api_key=config.nvidia_api_key)
         graph_builder = KnowledgeGraphBuilder()
         
         # Delegate to workflow

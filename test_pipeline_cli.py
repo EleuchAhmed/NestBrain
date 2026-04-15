@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from nestbrain.core.pipeline_runner import load_config, ensure_config
 from nestbrain.core.workflow_engine import PipelineWorkflow
 from nestbrain.core.zotero_sync import ZoteroSyncClient
-from nestbrain.core.ollama_client import OllamaClient
+from nestbrain.core.ollama_client import NvidiaLLMClient
 
 async def main():
     app_root = Path(__file__).resolve().parent
@@ -28,7 +28,7 @@ async def main():
         host=config.zotero_host
     )
     
-    ollama = OllamaClient(host=config.ollama_host, api_key=config.nvidia_api_key)
+    ollama = NvidiaLLMClient(host=config.ollama_host, api_key=config.nvidia_api_key)
     
     workflow = PipelineWorkflow(app_root=app_root)
     

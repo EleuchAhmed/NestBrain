@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from .notebooklm_bridge import NotebookLMBridge
 from .notebooklm_auth import NotebookLMAuthRequiredError
-from .ollama_client import OllamaClient
+from .ollama_client import NvidiaLLMClient
 from .note_parser import MarkdownNoteParser
 from .paths import get_registry_path
 from .registry import PipelineRegistry
@@ -50,7 +50,7 @@ class PipelineWorkflow:
         self,
         vault_path: str,
         zotero: ZoteroSyncClient,
-        ollama: OllamaClient,
+        ollama: NvidiaLLMClient,
         selected_collection_key: str = "",
         progress_callback: Callable[[int], None] | None = None,
         status_callback: Callable[[str], None] | None = None,

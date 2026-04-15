@@ -54,16 +54,28 @@ class PipelineRegistry:
             if migrated:
                 self.save()
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            # Log corruption but continue with empty registry
-            logger.warning("Registry file corrupted, resetting: %s", e)
+            # Log corruption as a critical error but continue with empty registry
+            logger.error("CRITICAL: Registry file corrupted, resetting database. Persistent errors may indicate disk issues: %s", e)
             self._backup_corrupted_registry()
             self.data = {}
 
     def save(self) -> None:
-        """Save registry to disk."""
+        """Save registry to disk safely using an atomic write."""
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
         raw = {key: asdict(entry) for key, entry in self.data.items()}
-        self.registry_file.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+        
+        temp_file = self.registry_file.with_suffix('.tmp')
+        try:
+            temp_file.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+            temp_file.replace(self.registry_file)
+        except Exception as e:
+            logger.error("CRITICAL: Failed to write registry to disk: %s", e)
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
+            raise
 
     def get_or_create(self, collection_slug: str, collection_name: str) -> CollectionRegistryEntry:
         """Get existing or create new registry entry."""
@@ -182,5 +194,5 @@ class PipelineRegistry:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup = self.registry_file.with_name(f"pipeline-registry.corrupt_{timestamp}.json")
             backup.write_text(self.registry_file.read_text(encoding="utf-8"), encoding="utf-8")
-        except Exception:
-            logger.warning("Failed to backup corrupted registry at %s", self.registry_file)
+        except Exception as e:
+            logger.error("CRITICAL: Failed to backup corrupted registry at %s. Error: %s", self.registry_file, e)

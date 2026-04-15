@@ -397,7 +397,10 @@ class BrainMapWidget(QGraphicsView):
         self.scene.addItem(self._tooltip_bg)
         self._tooltip_bg.hide()
 
-        self._empty_label = QGraphicsSimpleTextItem("Neural Map will appear after pipeline execution")
+        self._empty_label = QGraphicsSimpleTextItem(
+            "The map is empty. Add notes to your vault or sync Zotero collections,\n"
+            "then run the pipeline to build your Neural Map."
+        )
         empty_font = QFont("Segoe UI", 11)
         self._empty_label.setFont(empty_font)
         self._empty_label.setBrush(QColor("#888888"))

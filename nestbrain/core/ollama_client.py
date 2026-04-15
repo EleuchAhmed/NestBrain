@@ -10,16 +10,19 @@ from openai import OpenAI
 load_dotenv()
 
 
-class OllamaClientError(Exception):
+class NvidiaLLMClientError(Exception):
     pass
 
 
-class OllamaClient:
+# Backward-compatible alias for legacy import sites.
+OllamaClientError = NvidiaLLMClientError
+
+
+class NvidiaLLMClient:
     """HTTP client wrapper for NVIDIA NIM API.
     
-    NOTE: Despite the class name, this client communicates exclusively with 
-    NVIDIA NIM (https://integrate.api.nvidia.com/v1), not a local Ollama server.
-    The name is Legacy but maintained for backward compatibility.
+    This client communicates with NVIDIA NIM (https://integrate.api.nvidia.com/v1)
+    using the OpenAI-compatible SDK format.
     """
 
     def __init__(
@@ -56,9 +59,9 @@ class OllamaClient:
                 return ""
             return content.strip()
         except KeyError as exc:
-            raise OllamaClientError("Missing NVIDIA_API_KEY environment variable") from exc
+            raise NvidiaLLMClientError("Missing NVIDIA_API_KEY environment variable") from exc
         except Exception as exc:
-            raise OllamaClientError(f"API request failed: {exc}") from exc
+            raise NvidiaLLMClientError(f"API request failed: {exc}") from exc
 
     def summarize_text(self, text: str, max_chars: int = 7000) -> str:
         clipped_text = text[:max_chars]
@@ -126,3 +129,7 @@ class OllamaClient:
                 continue
 
         return None
+
+
+# Backward-compatible alias so existing import sites continue working.
+OllamaClient = NvidiaLLMClient

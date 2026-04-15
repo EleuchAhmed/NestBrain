@@ -118,11 +118,4 @@ Build and legacy wrapper folder.
 
 These are not canonical implementation sources.
 
-## Not Present in Current Tree
 
-These paths appear in older references but are not present in this repository:
-
-- automation/
-- agents/ (top-level runtime folder)
-- src/ at repo root
-- mcp-servers/
