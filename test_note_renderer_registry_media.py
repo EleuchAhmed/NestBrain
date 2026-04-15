@@ -200,7 +200,7 @@ def test_registry_migrates_legacy_collection_name_keys_to_slug(tmp_path: Path):
                 "Large Language Models": {
                     "name": "Large Language Models",
                     "notebook_id": "nb-123",
-                    "obsidian_path": "20_Concepts\\Systems Design\\large-language-models.md",
+                    "note_path": "20_Concepts\\Systems Design\\large-language-models.md",
                     "processed_sources": ["SRC1"],
                     "media_paths": {},
                     "last_updated": "2026-04-12T10:00:00",

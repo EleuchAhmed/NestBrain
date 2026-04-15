@@ -28,7 +28,7 @@ class NoteSeeder:
 
     def _build_seed_file_path(self, term: str) -> Path:
         """Create a hidden, root-level staging filename for new seed notes."""
-        return self.vault_path / f".nestbrain_seeder.{to_slug(term)}.md"
+        return self.vault_path / f".{to_slug(term)}.md"
 
     def _resolve_existing_note_path(self, note_title: str) -> Path | None:
         if not note_title.strip():
@@ -157,7 +157,7 @@ class NoteSeeder:
     def _seed_new_note(self, term: str, master_note_context: str, subject_title: str, write_path: Path) -> bool:
         """The Seed Maker uses devstral to build a baseline concept node."""
         system_prompt = (
-            "You are The Seed Maker. Create a concise, factual initial 'stub' note for an Obsidian knowledge vault.\n"
+            "You are The Seed Maker. Create a concise, factual initial 'stub' note for a knowledge vault.\n"
             f"Write a definition and key details for the term based on the provided overarching context.\n"
             f"You MUST include an explicitly linked \"Source Context: [[{subject_title}]]\" section at the end.\n"
             "Format cleanly in Markdown, beginning with `# [Term Name]`."
@@ -202,7 +202,7 @@ class NoteSeeder:
             "You are The Surgeon. Your job is to surgically APPEND a new relevant section to an existing markdown note.\n"
             "DO NOT rewrite or summarize everything. Return ONLY the new sub-section text that should be appended to the bottom.\n"
             f"The new section should capture what the overarching context says about the term.\n"
-            f"You must include a bidirectional link `[[{subject_title}]]` inside your generated text so Obsidian registers the connection.\n"
+            f"You must include a bidirectional link `[[{subject_title}]]` inside your generated text so the note system registers the connection.\n"
             "Format the new section with a heading corresponding to the new context."
         )
 

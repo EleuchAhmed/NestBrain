@@ -1,6 +1,6 @@
 ---
 name: research-pipeline-mastery
-description: 'Use when working on Nestbrain research-pipeline tasks: architecture tracing, v2 stage changes, pipeline debugging, Zotero/NotebookLM/NVIDIA integration checks, vault note generation, graph updates, launcher behavior, and safe extension planning.'
+description: 'Use when working on Nestbrain research-pipeline tasks: architecture tracing, pipeline stage changes, pipeline debugging, Zotero/NotebookLM/NVIDIA integration checks, vault note generation, graph updates, launcher behavior, and safe extension planning.'
 argument-hint: 'Task focus: pipeline | ui | integrations | debugging | testing | docs'
 user-invocable: true
 ---
@@ -8,21 +8,21 @@ user-invocable: true
 # Research Pipeline Mastery
 
 ## What This Skill Produces
-- Accurate, code-verified changes for the Nestbrain desktop app and v2 research pipeline.
+- Accurate, code-verified changes for the Nestbrain desktop app and pipeline engine.
 - Fast routing to the correct subsystem before editing.
 - Completion checks that confirm runtime behavior, not just static code changes.
 
 ## Project Facts To Anchor On
 - Primary runtime is Python desktop in nestbrain/.
 - Canonical pipeline entrypoint is nestbrain/core/pipeline_runner.py.
-- Active workflow is nestbrain/core/v2_workflow.py (workflow.py is legacy unless runner changes).
+- Active workflow is nestbrain/core/workflow_engine.py (workflow.py is legacy unless runner changes).
 - UI lives in nestbrain/ui/, background work in nestbrain/workers/, business logic and integrations in nestbrain/core/.
 - Persistent collection state is pipeline-registry.json (schema changes require migration handling).
 - Vault output is the source of truth for generated notes; filing and classification go through nestbrain/core/vault_manager.py.
 - Generated artifacts and logs (for example pipeline_logs/ and build outputs) are disposable unless task says otherwise.
 
 ## When To Use
-- Add or modify any behavior in the v2 pipeline layers.
+- Add or modify any behavior in the pipeline layers.
 - Diagnose failures in run flow: Zotero sync, NotebookLM ingest/Q&A, synthesis, note writing, graph updates.
 - Extend note rendering, semantic linking, or vault filing behavior.
 - Change launcher, Docker, or startup behavior that affects local execution.
@@ -30,10 +30,10 @@ user-invocable: true
 
 ## Decision Routing
 1. If request touches pipeline orchestration:
-- Start in nestbrain/core/pipeline_runner.py then trace into nestbrain/core/v2_workflow.py.
+- Start in nestbrain/core/pipeline_runner.py then trace into nestbrain/core/workflow_engine.py.
 
-2. If request touches one v2 stage behavior:
-- Edit the relevant module in nestbrain/core/stages/ and verify call sites in v2_workflow.py.
+2. If request touches one pipeline stage behavior:
+- Edit the relevant module in nestbrain/core/stages/ and verify call sites in workflow_engine.py.
 
 3. If request touches note output paths, classification, or filing:
 - Route through nestbrain/core/vault_manager.py and keep note_renderer + write/merge paths aligned.
@@ -54,7 +54,7 @@ user-invocable: true
 - ARCHITECTURE.md
 - DEV_GUIDELINES.md
 - nestbrain/core/pipeline_runner.py
-- nestbrain/core/v2_workflow.py
+- nestbrain/core/workflow_engine.py
 3. Trace real code path before edits:
 - Entry point -> runner -> workflow -> stage(s) -> renderer/writer -> vault manager -> registry/archive.
 4. Apply minimal edits at the smallest responsible boundary.
@@ -70,7 +70,7 @@ user-invocable: true
 - Zotero sync (zotero_sync.py)
 - NotebookLM bridge/auth (notebooklm_bridge.py and auth modules)
 - NVIDIA NIM client availability (nvidia_nim_client.py)
-4. For per-collection failures, inspect v2_workflow process_collection_v2 path and stage status messages.
+4. For per-collection failures, inspect workflow_engine process_collection path and stage status messages.
 5. Inspect run outputs:
 - nestbrain/runs/*.json
 - pipeline_logs/
@@ -78,10 +78,10 @@ user-invocable: true
 6. Verify registry consistency:
 - notebook ID mapping
 - processed source keys
-- obsidian/media paths
+- note/media paths
 
 ## Extension Patterns
-- New pipeline capability: prefer a new stage in nestbrain/core/stages/ and wire it in v2_workflow.py.
+- New pipeline capability: prefer a new stage in nestbrain/core/stages/ and wire it in workflow_engine.py.
 - New UI action: signal/slot wiring in ui/, execution in workers/, logic in core/.
 - New Zotero behavior: implement in ZoteroSyncClient instead of UI-side ad hoc calls.
 - New note enrichment: update both create and merge paths together.
@@ -109,7 +109,7 @@ user-invocable: true
 python -m nestbrain.main
 pytest -q
 python -m pytest test_pipeline_cli.py -q
-python -m pytest test_v2_components.py -q
+python -m pytest test_workflow_components.py -q
 python -m pytest test_vault_manager.py -q
 ```
 

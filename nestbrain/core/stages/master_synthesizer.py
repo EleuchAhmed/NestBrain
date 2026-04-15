@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class MasterSynthesizer:
     """Layer 1: The Author (deepseek-v3.2)
     Synthesizes all Q&A data into a structured Markdown "Master Note" 
-    with headers and Obsidian formatting.
+    with headers and markdown formatting.
     """
     
     MODEL = "deepseek-ai/deepseek-v3.2"
@@ -37,7 +37,7 @@ class MasterSynthesizer:
         logger.info(f"Synthesizing Master Note for subject: {subject} from {len(qa_history)} Q&A pairs.")
 
         system_prompt = (
-            "You are an expert Technical Writer and Author creating a definitive master note for a personal Obsidian vault.\n"
+            "You are an expert Technical Writer and Author creating a definitive master note for a personal knowledge vault.\n"
             "You will be given a subject and a rough history of Q&A research passes related to that subject.\n"
             "Your task is to synthesize this unstructured Q&A data into a highly structured, flowing, cohesive Markdown document.\n\n"
             "Format REQUIREMENTS:\n"
@@ -52,7 +52,7 @@ class MasterSynthesizer:
             "- Use `###` subsections where needed and include source-grounded detail.\n"
             "- Include concrete mechanisms, constraints, and edge cases, not generic prose.\n"
             "- Do NOT write just a list of Q&As. Integrate the knowledge into a coherent technical note.\n"
-            "- Embed Obsidian wikilinks like `[[Term]]` inline in natural sentences at first meaningful mention only.\n"
+            "- Embed wikilinks like `[[Term]]` inline in natural sentences at first meaningful mention only.\n"
             "- Never output a standalone section named Related Notes, Links, Related Links, or Knowledge Graph.\n"
             "- Do not list bare wikilinks; each link must be contextualized in a sentence.\n"
             "- Each linked concept should appear as a wikilink only once in the note.\n"

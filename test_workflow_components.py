@@ -113,7 +113,7 @@ def test_note_seeder_creates_note_with_alias_frontmatter(tmp_path: Path, monkeyp
     )
 
     assert created is True
-    expected_note = tmp_path / ".nestbrain_seeder.retrieval-augmented-generation-rag.md"
+    expected_note = tmp_path / ".retrieval-augmented-generation-rag.md"
     assert expected_note.exists()
 
     content = expected_note.read_text(encoding="utf-8")

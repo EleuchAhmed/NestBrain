@@ -81,7 +81,7 @@ class SettingsDialog(QDialog):
         vault_row = QHBoxLayout()
         vault_row.setSpacing(8)
         self.vault_input = QLineEdit(config.vault_path)
-        self.vault_input.setPlaceholderText("Path to your Obsidian vault")
+        self.vault_input.setPlaceholderText("Path to your note vault")
         browse_btn = QPushButton("Browse")
         browse_btn.setObjectName("SettingsBrowseButton")
         browse_btn.clicked.connect(self._browse_vault)
@@ -158,7 +158,7 @@ class SettingsDialog(QDialog):
         self._refresh_notebooklm_status()
 
     def _browse_vault(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Select Obsidian Vault", self.vault_input.text() or str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(self, "Select Note Vault", self.vault_input.text() or str(Path.home()))
         if folder:
             self.vault_input.setText(folder)
 
@@ -336,8 +336,8 @@ class MainWindow(QMainWindow):
             return
             
         try:
-            from ..core.obsidian_parser import ObsidianParser
-            parser = ObsidianParser(self.config.vault_path)
+            from ..core.note_parser import MarkdownNoteParser
+            parser = MarkdownNoteParser(self.config.vault_path)
             notes = parser.parse_vault()
 
             # Convert notes to dicts for the worker
@@ -375,7 +375,7 @@ class MainWindow(QMainWindow):
 
     def _on_nav_changed(self, key: str) -> None:
         mapping = {
-            "obsidian_notes": "notes",
+            "notes": "notes",
             "pipeline": "pipeline",
             "brain_map": "brain",
         }
@@ -406,7 +406,7 @@ class MainWindow(QMainWindow):
             
             if validation["error"]:
                 QMessageBox.warning(self, "Vault Configuration Warning", 
-                    f"⚠️ {validation['error']}\n\nPlease reconfigure your Obsidian vault path in Settings.")
+                    f"⚠️ {validation['error']}\n\nPlease reconfigure your note vault path in Settings.")
                 self.statusBar().showMessage("⚠️ Vault path needs configuration", 5000)
             else:
                 self.statusBar().showMessage("Settings saved", 3000)
@@ -476,7 +476,7 @@ class MainWindow(QMainWindow):
         vault_error = errors.get("vault", "")
         if vault_error:
             QMessageBox.critical(self, "Pipeline Error", 
-                f"Cannot start pipeline: {vault_error}\n\nPlease configure your Obsidian vault path in Settings.")
+                f"Cannot start pipeline: {vault_error}\n\nPlease configure your note vault path in Settings.")
             self.workspace.set_pipeline_running(False)
             return
 

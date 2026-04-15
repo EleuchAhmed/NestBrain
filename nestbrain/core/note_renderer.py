@@ -1,4 +1,4 @@
-"""Note rendering and synthesis for Obsidian vault integration."""
+"""Note rendering and synthesis for note-vault integration."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def render_master_note(
     synthesis: SynthesisResult,
     media_paths: dict[str, str],
 ) -> str:
-    """Render complete Obsidian note with frontmatter, media, synthesis, and sources."""
+    """Render a complete markdown note with frontmatter, media, synthesis, and sources."""
     
     now = datetime.now().isoformat()
     slug = slugify(collection_name)

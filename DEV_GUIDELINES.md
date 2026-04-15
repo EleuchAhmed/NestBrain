@@ -17,10 +17,10 @@
 
 ## Architectural Constraints
 - `PipelineRunner` is the top-level Python orchestration entry point.
-- `PipelineWorkflowV2` is the active workflow implementation used by the runner.
+- `PipelineWorkflow` in `workflow_engine.py` is the active workflow implementation used by the runner.
 - `workflow.py` is legacy and should not be treated as the primary flow unless the runner is explicitly changed.
 - `pipeline-registry.json` is the persistent collection state store; changing its schema requires migration logic.
-- The Obsidian vault is the primary output sink. Avoid writing arbitrary new file types into the vault root.
+- The note vault is the primary output sink. Avoid writing arbitrary new file types into the vault root.
 - The `My Brain` vault root should stay clean; taxonomy folders are created by the classifier on demand.
 - The NotebookLM auth cache is app-managed, with compatibility fallback for legacy `~/.notebooklm-mcp/auth.json` tokens.
 - The Python bridge uses `notebooklm-py` for NotebookLM operations.
@@ -50,6 +50,6 @@
 - If a feature exists in the roadmap but not in source, treat it as planned work, not implemented behavior.
 
 ## When Extending the System
-- For Python pipeline changes, start in `nestbrain/core/pipeline_runner.py` and trace into `v2_workflow.py`.
+- For Python pipeline changes, start in `nestbrain/core/pipeline_runner.py` and trace into `workflow_engine.py`.
 - For UI changes, start in `nestbrain/ui/main_window.py` and the relevant view module.
 - For launch behavior, keep changes in `launcher/windows/` and avoid mixing in runtime logic.

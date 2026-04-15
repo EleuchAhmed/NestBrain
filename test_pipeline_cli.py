@@ -1,4 +1,4 @@
-"""CLI test runner for v2 pipeline with debug output."""
+"""CLI test runner for the pipeline with debug output."""
 import asyncio
 import sys
 import os
@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from nestbrain.core.pipeline_runner import load_config, ensure_config
-from nestbrain.core.v2_workflow import PipelineWorkflowV2
+from nestbrain.core.workflow_engine import PipelineWorkflow
 from nestbrain.core.zotero_sync import ZoteroSyncClient
 from nestbrain.core.ollama_client import OllamaClient
 
@@ -30,9 +30,9 @@ async def main():
     
     ollama = OllamaClient(host=config.ollama_host, api_key=config.nvidia_api_key)
     
-    workflow = PipelineWorkflowV2(app_root=app_root)
+    workflow = PipelineWorkflow(app_root=app_root)
     
-    print(f"DEBUG:STARTUP - PipelineWorkflowV2 created")
+    print(f"DEBUG:STARTUP - PipelineWorkflow created")
     print(f"DEBUG:STARTUP - Zotero and Ollama clients initialized")
     
     def status_callback(msg: str):

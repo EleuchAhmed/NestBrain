@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .knowledge_graph import KnowledgeGraphBuilder
-from .obsidian_parser import ObsidianNote, ObsidianParser
+from .note_parser import MarkdownNote
 from .ollama_client import OllamaClient
 from .paths import get_config_path, get_runs_dir
 from .vault_manager import audit_unclassified_notes
 from .zotero_sync import ZoteroCollection, ZoteroItem, ZoteroSyncClient, ZoteroSyncError
-from .v2_workflow import PipelineWorkflowV2 as PipelineWorkflow
+from .workflow_engine import PipelineWorkflow
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -146,16 +146,16 @@ class PipelineRunner:
             "errors": workflow_result.get("errors", {}),
         }
 
-    def _coerce_notes(self, payload: list[Any]) -> list[ObsidianNote]:
-        notes: list[ObsidianNote] = []
+    def _coerce_notes(self, payload: list[Any]) -> list[MarkdownNote]:
+        notes: list[MarkdownNote] = []
         for item in payload:
-            if isinstance(item, ObsidianNote):
+            if isinstance(item, MarkdownNote):
                 notes.append(item)
                 continue
             if not isinstance(item, dict):
                 continue
             notes.append(
-                ObsidianNote(
+                MarkdownNote(
                     path=str(item.get("path", "")),
                     title=str(item.get("title", "Untitled")),
                     tags=[str(tag) for tag in item.get("tags", []) if str(tag).strip()],
@@ -277,7 +277,7 @@ class PipelineRunner:
             suspicious_roots.add(onedrive)
         
         if path in suspicious_roots:
-            return {"error": f"Vault path '{path.name}' is too broad. Please set it to your actual Obsidian vault (e.g., 'tech knowledge')."}
+            return {"error": f"Vault path '{path.name}' is too broad. Please set it to your actual note vault (e.g., 'tech knowledge')."}
 
         # Ensure the app can write output files into this vault.
         try:

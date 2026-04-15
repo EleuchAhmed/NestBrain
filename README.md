@@ -1,8 +1,8 @@
 # Nestbrain Research Pipeline
 
-Nestbrain is a professional, standalone desktop application built with Python and PyQt6. It acts as an automated bridge between your reference managers (Zotero), reading platforms (NotebookLM), local Large Language Models (Ollama), and note-taking systems (Obsidian).
+Nestbrain is a professional, standalone desktop application built with Python and PyQt6. It acts as an automated bridge between your reference managers (Zotero), reading platforms (NotebookLM), local Large Language Models (Ollama), and markdown note systems.
 
-By running Nestbrain, you automate the extraction, synthesis, and writing of academic notes directly into your Obsidian vault.
+By running Nestbrain, you automate the extraction, synthesis, and writing of academic notes directly into your note vault.
 
 ## Vault System
 
@@ -16,7 +16,7 @@ Every filed note gets an AI classification footer and an audit record in `vault_
 - **Standalone Architecture:** Single-click PyInstaller executable; no Node.js or TypeScript required.
 - **Native Browser Automation:** Uses underlying Playwright libraries combined with native `notebooklm-py` API for NotebookLM synchronization.
 - **DeepSeek Integration:** Summarizes references using NVIDIA NIM DeepSeek V3.1 via API.
-- **Zotero & Obsidian Bridges:** Automatically pulls recent Zotero highlights, generates rich conceptual notes, and deposits them cleanly formatted into Obsidian.
+- **Zotero & Note Bridges:** Automatically pulls recent Zotero highlights, generates rich conceptual notes, and deposits them cleanly formatted into the note vault.
 
 ## Requirements
 
@@ -60,7 +60,7 @@ To build the executable:
 The standalone `.exe` will be located in `scripts\dist\Nestbrain.exe`. You can distribute this single file directly.
 
 ## Environment Variables (.env)
-- `OBSIDIAN_VAULT_PATH`: Absolute path to your Obsidian vault.
+- `NOTE_VAULT_PATH`: Absolute path to your note vault.
 - `ZOTERO_LIBRARY_ID` and `ZOTERO_API_KEY`: Credentials for Zotero sync.
 - `NVIDIA_API_KEY`: Your NVIDIA NIM API key for DeepSeek V3.1.
 

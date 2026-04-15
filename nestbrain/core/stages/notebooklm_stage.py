@@ -130,7 +130,7 @@ async def generate_media(
         bridge: NotebookLMBridge instance
         notebook_id: Target notebook ID
         collection_name: Collection name for filename
-        vault_path: Path to Obsidian vault
+        vault_path: Path to the note vault
         status_callback: Optional progress callback
         
     Returns:

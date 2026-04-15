@@ -1,4 +1,4 @@
-"""Workflow coordinator for the NestBrain v2 Pipeline (NVIDIA NIM)."""
+"""Workflow coordinator for the NestBrain pipeline (NVIDIA NIM)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any, Callable
 from .notebooklm_bridge import NotebookLMBridge
 from .notebooklm_auth import NotebookLMAuthRequiredError
 from .ollama_client import OllamaClient
-from .obsidian_parser import ObsidianParser
+from .note_parser import MarkdownNoteParser
 from .paths import get_registry_path
 from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient
@@ -20,7 +20,6 @@ from .nvidia_client import nvidia_client
 from .vault_manager import find_note_path
 from .utils import to_slug
 
-# V2 Stages
 from .stages.question_planner import QuestionPlanner
 from .stages.q_and_a_loop import QAndALoop
 from .stages.master_synthesizer import MasterSynthesizer
@@ -33,46 +32,43 @@ from .stages.notewriter_stage import write_note
 
 logger = logging.getLogger(__name__)
 
-class PipelineWorkflowV2:
-    """Coordinates NVIDIA NIM based v2 pipeline."""
-    
+
+class PipelineWorkflow:
+    """Coordinates the NVIDIA NIM based pipeline."""
+
     def __init__(self, app_root: str | Path) -> None:
         self.app_root = Path(app_root).resolve()
         self.registry_path = get_registry_path()
         self.registry = PipelineRegistry(self.registry_path)
         self.notebooklm: NotebookLMBridge | None = None
-        
-        # Instantiate v2 models (NVIDIA APIs)
+
         self.planner = QuestionPlanner()
         self.synthesizer = MasterSynthesizer()
         self.extractor = EntityExtractor()
-        
+
     async def run_full_pipeline(
         self,
         vault_path: str,
         zotero: ZoteroSyncClient,
-        ollama: OllamaClient, # Kept for backward compat / UI
+        ollama: OllamaClient,
         selected_collection_key: str = "",
         progress_callback: Callable[[int], None] | None = None,
         status_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
-        """Run complete V2 pipeline"""
-        
-        self._emit(status_callback, "Initializing V2 NVIDIA pipeline")
+        """Run the complete pipeline."""
+
+        self._emit(status_callback, "Initializing pipeline")
         self._emit(progress_callback, 5)
 
-        # Parse vault (legacy logic to get basic graph state if needed)
-        parser = ObsidianParser(vault_path)
+        parser = MarkdownNoteParser(vault_path)
         notes = parser.parse_vault()
-        
-        # Initialize V2 Vault classes
+
         self.seeder = NoteSeeder(vault_path)
         self.indexer = VectorIndexer(vault_path)
         self.auditor = SemanticAuditor(vault_path)
         self.annotator = ConnectionAnnotator(vault_path)
         self._emit(progress_callback, 10)
 
-        # Sync Zotero
         self._emit(status_callback, "Syncing Zotero collections")
         try:
             if selected_collection_key:
@@ -81,7 +77,7 @@ class PipelineWorkflowV2:
                 collections = zotero.sync_all()
         except Exception as exc:
             return {"errors": {"zotero": str(exc)}}
-            
+
         self._emit(progress_callback, 20)
 
         created_notes = []
@@ -98,8 +94,8 @@ class PipelineWorkflowV2:
             for idx, collection in enumerate(collections):
                 progress = int(20 + (idx / len(collections)) * 60)
                 self._emit(progress_callback, progress)
-                
-                result = await self.process_collection_v2(
+
+                result = await self.process_collection(
                     collection, vault_path, status_callback
                 )
                 if result.get("success"):
@@ -117,7 +113,7 @@ class PipelineWorkflowV2:
             "errors": {"warnings": sorted(set(pipeline_warnings))},
         }
 
-    async def process_collection_v2(
+    async def process_collection(
         self,
         collection: ZoteroCollection,
         vault_path: str,
@@ -130,15 +126,13 @@ class PipelineWorkflowV2:
 
             collection_slug = collection.slug or to_slug(collection.display_name or collection.name)
             collection_display_name = collection.display_name or collection.name
-            
-            # Ensure registry entry exists
+
             self.registry.get_or_create(collection_slug, collection_display_name)
             all_items = collection.items
             all_keys = [item.key for item in all_items]
             new_source_keys = self.registry.get_new_sources(collection_slug, all_keys)
             new_items = [item for item in all_items if item.key in set(new_source_keys)]
-            
-            # NotebookLM Setup
+
             notebook_id = self.registry.get_notebook_id(collection_slug)
             if not notebook_id:
                 self._emit(status_callback, f"Creating NotebookLM notebook for {collection_display_name}")
@@ -146,7 +140,6 @@ class PipelineWorkflowV2:
                 self.registry.set_notebook_id(collection_slug, notebook_id)
                 self.registry.save()
 
-            # Ingestion logic always runs for newly discovered sources
             if new_items:
                 self._emit(status_callback, f"Ingesting {len(new_items)} new sources into NotebookLM")
                 successful_keys: list[str] = []
@@ -174,14 +167,10 @@ class PipelineWorkflowV2:
             else:
                 self._emit(status_callback, f"No new sources to ingest for {collection_display_name}")
 
-            # LAYER 1: Research & Synthesis
             self._emit(status_callback, f"L1: Planning Research for {collection_display_name}")
-            
-            # 1. Question Planner (Architect)
             logger.debug("Building context summary from %s items", len(new_items or all_items) or 0)
             context_summary = self._build_context_summary(new_items or all_items)
             logger.debug("Calling question_planner.generate_taxonomy for %s", collection_display_name)
-            # Run the synchronous CPU/IO-bound function in a thread pool to avoid blocking the async event loop
             loop = asyncio.get_event_loop()
             taxonomy = await loop.run_in_executor(
                 None,
@@ -192,16 +181,14 @@ class PipelineWorkflowV2:
                 msg = f"Question planner fallback used for {collection_display_name}: {self.planner.last_error}"
                 warnings.append(msg)
                 self._emit(status_callback, f"Warning: {msg}")
-            
-            # 2. Q&A Loop (Researcher)
+
             self._emit(status_callback, f"L1: Iterative Q&A loops ({len(taxonomy)} paths)")
             logger.debug("Creating QAndALoop instance for %s", collection_display_name)
             qa_loop = QAndALoop(self.notebooklm)
             logger.debug("Calling execute_research with %s questions", len(taxonomy))
             qa_history = await qa_loop.execute_research(notebook_id, taxonomy)
             logger.debug("Received %s Q&A history entries", len(qa_history))
-            
-            # 3. Master Synthesis (Author)
+
             self._emit(status_callback, "L1: Synthesizing Master Note")
             master_note_content = self.synthesizer.synthesize(collection_display_name, qa_history)
             if self.synthesizer.used_fallback:
@@ -212,8 +199,7 @@ class PipelineWorkflowV2:
             deep_dive_content = master_note_content
             if self.synthesizer.used_fallback:
                 deep_dive_content = self._build_structured_deep_dive(collection_display_name, qa_history)
-            
-            # LAYER 2: Entity Growth
+
             self._emit(status_callback, "L2: Extracting knowledge entities")
             entities = self.extractor.extract_entities(master_note_content)
             if self.extractor.used_fallback:
@@ -226,7 +212,7 @@ class PipelineWorkflowV2:
                 self._emit(status_callback, f"Warning: {msg}")
             entities = self._dedupe_entities(entities)
             self.seeder.reset_link_overrides()
-            
+
             for term in entities:
                 self._emit(status_callback, f"L2: Seeding/Patching entity '{term}'")
                 self.seeder.process_extracted_term(term, deep_dive_content, collection_display_name)
@@ -246,11 +232,10 @@ class PipelineWorkflowV2:
             )
             link_overrides = self.seeder.get_link_overrides()
 
-            # Save a structured note into the standard vault hierarchy.
             synthesis_payload = SynthesisResult(
                 academic_synthesis=(
                     f"# {collection_display_name}\n\n"
-                    "Auto-generated by PipelineWorkflowV2. Detailed synthesis is in the Deep Dive section."
+                    "Auto-generated by PipelineWorkflow. Detailed synthesis is in the Deep Dive section."
                 ),
                 conceptual_deep_dive=deep_dive_content,
                 actionable_knowledge=self._build_actionable_takeaways(entities, link_overrides),
@@ -284,10 +269,9 @@ class PipelineWorkflowV2:
                     vault_path=vault_path,
                     status_callback=status_callback,
                 )
-            
-            # Update registry with note path and save
+
             if note_path:
-                self.registry.set_obsidian_path(collection_slug, note_path)
+                self.registry.set_note_path(collection_slug, note_path)
                 self.registry.save()
 
             return {"success": True, "note_path": note_path, "warnings": warnings}
@@ -418,37 +402,33 @@ class PipelineWorkflowV2:
             "Use Cases and Applications": [],
             "Tradeoffs and Risks": [],
         }
-
-        for qa in qa_history[:16]:
-            question = (qa.get("question") or "").strip()
-            answer = (qa.get("answer") or "").strip()
-            if not question or not answer:
+        for entry in qa_history:
+            question = (entry.get("question") or "").lower()
+            answer = (entry.get("answer") or "").strip()
+            if not answer:
                 continue
-            lower = question.lower()
-            target = "Foundations"
-            if any(k in lower for k in ["architecture", "design", "system", "workflow"]):
-                target = "Architecture and Workflow"
-            elif any(k in lower for k in ["how", "implement", "technical", "mechanism", "integration"]):
-                target = "Implementation Details"
-            elif any(k in lower for k in ["use case", "application", "when should", "adopt", "deploy"]):
-                target = "Use Cases and Applications"
-            elif any(k in lower for k in ["limitation", "tradeoff", "risk", "challenge", "edge case"]):
-                target = "Tradeoffs and Risks"
+            if any(k in question for k in ["what is", "why", "foundational"]):
+                sections["Foundations"].append(answer)
+            elif any(k in question for k in ["architecture", "workflow", "system", "component"]):
+                sections["Architecture and Workflow"].append(answer)
+            elif any(k in question for k in ["implement", "how", "mechanism", "integration"]):
+                sections["Implementation Details"].append(answer)
+            elif any(k in question for k in ["use case", "application", "example"]):
+                sections["Use Cases and Applications"].append(answer)
+            elif any(k in question for k in ["risk", "tradeoff", "limitation", "edge case"]):
+                sections["Tradeoffs and Risks"].append(answer)
+            else:
+                sections["Implementation Details"].append(answer)
 
-            sections[target].append(f"### {question}\n{answer}")
-
-        blocks: list[str] = [f"## Subject\n{subject}"]
-        for name, entries in sections.items():
-            if not entries:
-                continue
-            blocks.append(f"## {name}\n\n" + "\n\n".join(entries))
-
-        blocks.append(
-            "## Follow-up Checklist\n"
-            "- Validate each key claim against source citations.\n"
-            "- Expand sparse sections in the next run with targeted questions."
-        )
-        return "\n\n".join(blocks)
+        blocks = [f"# {subject}", "", "## Executive Summary", "Model synthesis failed, so this note was built from raw research responses."]
+        for heading, items in sections.items():
+            blocks.append("")
+            blocks.append(f"## {heading}")
+            if items:
+                blocks.extend([f"- {item}" for item in items[:8]])
+            else:
+                blocks.append("- No evidence captured for this section.")
+        return "\n".join(blocks).strip()
 
     def _emit(self, callback: Callable[[Any], None] | None, payload: Any) -> None:
         if callback:

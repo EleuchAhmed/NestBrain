@@ -368,7 +368,7 @@ class VaultTreePanel(QWidget):
 
             for child in children:
                 if child.is_dir():
-                    if child.name == ".obsidian":
+                    if child.name.startswith("."):
                         continue
                     folder_item = self._create_item(child.name, child, "folder")
                     parent_item.addChild(folder_item)
@@ -750,7 +750,7 @@ class Workspace(QWidget):
         headline.setObjectName("PipelineHeadline")
 
         subtitle = QLabel(
-            "Deploy your local pipeline to synthesize Obsidian notes, Zotero collections, "
+            "Deploy your local pipeline to synthesize notes, Zotero collections, "
             "and research fragments into a cohesive map."
         )
         subtitle.setWordWrap(True)
@@ -977,7 +977,7 @@ class Workspace(QWidget):
 
             for child in children:
                 if child.is_dir():
-                    if child.name == ".obsidian":
+                    if child.name.startswith("."):
                         continue
                     walk(child)
                 elif child.is_file() and child.suffix.lower() == ".md":

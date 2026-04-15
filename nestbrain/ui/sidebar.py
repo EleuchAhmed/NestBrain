@@ -33,7 +33,7 @@ class TopNavBar(QWidget):
 
         self.nav_items: list[NavItem] = [
             NavItem("brain_map", "Brain-Map", "⊙"),
-            NavItem("obsidian_notes", "Notes", "≡"),
+            NavItem("notes", "Notes", "≡"),
             NavItem("pipeline", "Pipeline", "✦"),
         ]
 

@@ -3,7 +3,7 @@
 ## Root
 - `README.md` - top-level overview, but some statements are stale relative to the current tree.
 - `CHANGELOG.md` - migration notes and release history.
-- `v2_context.md` - design intent for the v2 multi-layer knowledge graph workflow.
+- `pipeline_context.md` - design intent for the neutral multi-layer knowledge graph workflow.
 - `launcher/` - startup wrappers for Windows.
 - `nestbrain/` - primary Python application.
 - `scripts/` - legacy compatibility and build helpers.
@@ -28,23 +28,23 @@
 - Key files:
   - `pipeline_runner.py` - pipeline entry logic and run archive creation.
   - `vault_manager.py` - first-launch vault bootstrap, classification, filing, and audit logging.
-  - `v2_workflow.py` - active orchestration of the decomposed research pipeline.
+  - `workflow_engine.py` - active orchestration of the decomposed research pipeline.
   - `workflow.py` - older workflow coordinator, likely legacy.
   - `zotero_sync.py` - Zotero client and data models.
   - `notebooklm_bridge.py` - NotebookLM operations.
   - `ollama_client.py` - NVIDIA NIM client wrapper.
-  - `obsidian_parser.py` - vault scanning and note extraction.
+  - `note_parser.py` - vault scanning and note extraction.
   - `knowledge_graph.py` - graph payload builder.
   - `note_renderer.py` - note template rendering and merging.
   - `registry.py` - registry persistence for collections.
-  - `stages/` - v2 stage modules.
+  - `stages/` - pipeline stage modules.
 - Relationships:
   - `pipeline_runner.py` owns the top-level orchestration.
-  - `v2_workflow.py` composes the stage modules.
+  - `workflow_engine.py` composes the stage modules.
   - `registry.py` is shared by the workflow and runner.
 
 ### `nestbrain/core/stages/`
-- Purpose: smaller units of the v2 pipeline.
+- Purpose: smaller units of the pipeline.
 - Key files:
   - `question_planner.py` - builds the question taxonomy.
   - `q_and_a_loop.py` - runs NotebookLM question loops.
@@ -58,7 +58,7 @@
   - `synthesis_stage.py` - synthesis orchestration.
   - `notewriter_stage.py` - final note render, merge, and handoff to vault filing.
 - Relationships:
-  - `v2_workflow.py` imports these modules directly.
+  - `workflow_engine.py` imports these modules directly.
   - The stage split reflects the current research pipeline decomposition.
 
 ### `nestbrain/ui/`

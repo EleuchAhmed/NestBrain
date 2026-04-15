@@ -2,7 +2,7 @@
   "EJWZ2YDM": {
     "name": "LLM-FineTuning",
     "notebook_id": "fccaed47-d2cb-4b45-a8cb-67821c39f2da",
-    "obsidian_path": "20_Concepts\\Systems Design\\llm-finetuning.md",
+    "note_path": "20_Concepts\\Systems Design\\llm-finetuning.md",
     "processed_sources": [
       "2TEU3LTU",
       "5P7US64F",
@@ -18,7 +18,7 @@
   "2PJPHXSQ": {
     "name": "Ai-Agents",
     "notebook_id": "a67c7c8f-5f6e-49f5-beab-f385fbf9bdf4",
-    "obsidian_path": "",
+    "note_path": "",
     "processed_sources": [
       "7C7888FN",
       "TVUA3Q84"
@@ -29,7 +29,7 @@
   "6W96EP2Z": {
     "name": "Desktop app dev",
     "notebook_id": "e83c7a70-02fd-417f-bcd1-c50552b49452",
-    "obsidian_path": "",
+    "note_path": "",
     "processed_sources": [],
     "media_paths": {},
     "last_updated": ""
@@ -37,7 +37,7 @@
   "MGSTAH7W": {
     "name": "prompt engineering",
     "notebook_id": "ce746ddf-4937-484e-8a9a-1d3d638706b6",
-    "obsidian_path": "20_Concepts\\Systems Design\\prompt-engineering.md",
+    "note_path": "20_Concepts\\Systems Design\\prompt-engineering.md",
     "processed_sources": [
       "4FF7QUKD",
       "5LM6PT4P",

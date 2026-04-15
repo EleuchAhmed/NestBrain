@@ -20,9 +20,9 @@ User
       -> NotebookLMBridge
       -> stage modules in nestbrain/core/stages/
       -> OllamaClient (NVIDIA NIM)
-      -> ObsidianParser
+      -> MarkdownNoteParser
       -> NoteSeeder / VectorIndexer / SemanticAuditor / ConnectionAnnotator
-  -> Obsidian vault files + pipeline-registry.json + runs/
+  -> note vault files + pipeline-registry.json + runs/
 ```
 
 ## Data Flow
@@ -51,7 +51,7 @@ User
 20. The pipeline runner archives summary metadata and the UI refreshes the graph.
 
 ### Graph Flow
-1. `ObsidianParser` scans the vault for Markdown notes.
+1. `MarkdownNoteParser` scans the vault for Markdown notes.
 2. `KnowledgeGraphBuilder` converts notes, references, and semantic links into nodes and edges.
 3. `BrainMapView` renders the graph using NetworkX and Matplotlib.
 
@@ -71,13 +71,13 @@ User
 - Zotero local API and Web API.
 - NotebookLM native client library in Python.
 - NVIDIA NIM chat/completions, embeddings, and ranking endpoints.
-- Obsidian vault filesystem.
+- note vault filesystem.
 - Docker and VcXsrv for Windows GUI container support.
 
 ## Current Constraints
 - The current `docker/docker-compose.yml` only defines the `nestbrain` desktop service.
 - Several repository docs mention additional services and directories that are not present in the current tree.
-- The active Python workflow is `v2_workflow.py`; `workflow.py` remains in the tree but is not the path used by `PipelineRunner`.
+- The active Python workflow is `workflow_engine.py`; `workflow.py` remains in the tree but is not the path used by `PipelineRunner`.
 - `notebooklm_stage.py` currently handles video generation only; audio is not part of the active stage implementation.
 
 ## Subsystem Notes
@@ -86,7 +86,7 @@ User
 - Best understood as a local orchestration monolith with worker-thread isolation.
 - UI and business logic are intentionally separated.
 - Runtime state is mostly on disk.
-- Seeder decisions are persisted in `seeder_log.json` in the Obsidian vault for traceability.
+- Seeder decisions are persisted in `seeder_log.json` in the note vault for traceability.
 
 ## UNKNOWN
 - Exact internal behavior of notebooklm-py is not defined in this repo.

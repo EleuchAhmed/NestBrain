@@ -25,5 +25,5 @@
 
 ## Risks
 - Vault path validation is deliberately broad to prevent accidental scanning of top-level folders, but if users misconfigure the vault path they may still see unexpected notes or warnings.
-- The current architecture mixes a newer v2 workflow with older compatibility code. That increases the chance of changing the wrong path during maintenance.
+- The current architecture mixes a newer workflow engine with older compatibility code. That increases the chance of changing the wrong path during maintenance.
 - Generated folders such as `staging/`, `pipeline_logs/`, and build outputs can accumulate quickly if not cleaned up.

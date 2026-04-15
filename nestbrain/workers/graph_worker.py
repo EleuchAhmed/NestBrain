@@ -7,7 +7,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from ..core.errors import build_error_payload
 from ..core.knowledge_graph import KnowledgeGraphBuilder
-from ..core.obsidian_parser import ObsidianNote
+from ..core.note_parser import MarkdownNote
 from ..core.zotero_sync import ZoteroCollection, ZoteroItem
 
 
@@ -25,7 +25,7 @@ class GraphWorker(QObject):
     def run(self) -> None:
         try:
             notes = [
-                ObsidianNote(
+                MarkdownNote(
                     path=str(note.get("path", "")),
                     title=str(note.get("title", "Untitled")),
                     tags=list(note.get("tags", [])),

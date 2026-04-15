@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from .notebooklm_bridge import NotebookLMBridge
 from .ollama_client import OllamaClient
-from .obsidian_parser import ObsidianParser
+from .note_parser import MarkdownNoteParser
 from .paths import get_registry_path
 from .registry import PipelineRegistry
 from .zotero_sync import ZoteroCollection, ZoteroSyncClient, ZoteroSyncError
@@ -50,7 +50,7 @@ class PipelineWorkflow:
         """Run complete pipeline: vault parsing → Zotero sync → NotebookLM → synthesis → note writing.
         
         Args:
-            vault_path: Path to Obsidian vault
+            vault_path: Path to the note vault
             zotero: ZoteroSyncClient instance
             ollama: OllamaClient instance
             selected_collection_key: Optional specific collection to process
@@ -64,8 +64,8 @@ class PipelineWorkflow:
         self._emit(progress_callback, 5)
         
         # Parse vault
-        self._emit(status_callback, "Parsing Obsidian vault")
-        parser = ObsidianParser(vault_path)
+        self._emit(status_callback, "Parsing note vault")
+        parser = MarkdownNoteParser(vault_path)
         notes = parser.parse_vault()
         self._emit(progress_callback, 10)
         
@@ -145,7 +145,7 @@ class PipelineWorkflow:
         
         Args:
             collection: ZoteroCollection to process
-            vault_path: Path to Obsidian vault
+            vault_path: Path to the note vault
             ollama: OllamaClient instance
             status_callback: Optional progress callback
             progress_callback: Optional status callback
@@ -219,7 +219,7 @@ class PipelineWorkflow:
             )
             
             # Update registry
-            self.registry.set_obsidian_path(collection.key, note_path)
+            self.registry.set_note_path(collection.key, note_path)
             self.registry.mark_processed(collection.key, successful_keys)
             self.registry.save()
             

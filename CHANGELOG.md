@@ -19,6 +19,6 @@ All notable changes to the Nestbrain Research Pipeline will be documented in thi
 - **Stale Root Semantic Cache:** Removed stale repository-root `.nestbrain_index.json` and added ignore rules for generated index caches.
 
 ### Changed
-- Runtime orchestration flows through `nestbrain/core/pipeline_runner.py` to `nestbrain/core/v2_workflow.py`.
+- Runtime orchestration flows through `nestbrain/core/pipeline_runner.py` to `nestbrain/core/workflow_engine.py`.
 - NotebookLM authentication now launches from the settings dialog into a Python-native browser flow.
 - Re-structured `docker/docker-compose.yml` to define only the optional `nestbrain` GUI service in a desktop profile.

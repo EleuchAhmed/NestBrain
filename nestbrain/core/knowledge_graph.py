@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from .obsidian_parser import ObsidianNote
+from .note_parser import MarkdownNote
 from .zotero_sync import ZoteroCollection
 
 
@@ -37,7 +37,7 @@ class KnowledgeGraphBuilder:
 
     def build(
         self,
-        notes: list[ObsidianNote],
+        notes: list[MarkdownNote],
         collections: list[ZoteroCollection],
         semantic_links: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
@@ -130,7 +130,7 @@ class KnowledgeGraphBuilder:
             "edges": serialized_edges,
         }
 
-    def _build_wikilink_edges(self, notes: list[ObsidianNote]) -> list[GraphEdge]:
+    def _build_wikilink_edges(self, notes: list[MarkdownNote]) -> list[GraphEdge]:
         title_to_id = {note.title.lower(): f"note::{self._slugify(note.title)}" for note in notes}
         edges: list[GraphEdge] = []
 
@@ -143,7 +143,7 @@ class KnowledgeGraphBuilder:
 
         return edges
 
-    def _build_tag_similarity_edges(self, notes: list[ObsidianNote]) -> list[GraphEdge]:
+    def _build_tag_similarity_edges(self, notes: list[MarkdownNote]) -> list[GraphEdge]:
         edges: list[GraphEdge] = []
         for idx, left in enumerate(notes):
             left_tags = set(left.tags + left.semantic_tags)
@@ -170,7 +170,7 @@ class KnowledgeGraphBuilder:
 
         return edges
 
-    def _build_reference_edges(self, notes: list[ObsidianNote], collections: list[ZoteroCollection]) -> list[GraphEdge]:
+    def _build_reference_edges(self, notes: list[MarkdownNote], collections: list[ZoteroCollection]) -> list[GraphEdge]:
         note_tokens: dict[str, set[str]] = {
             f"note::{self._slugify(note.title)}": self._tokenize(" ".join([note.title, note.content]))
             for note in notes
@@ -210,7 +210,7 @@ class KnowledgeGraphBuilder:
                 edges.append(GraphEdge(source=source, target=target, weight=1.8, reason=reason))
         return edges
 
-    def _build_cluster_nodes(self, notes: list[ObsidianNote]) -> tuple[list[GraphNode], list[GraphEdge]]:
+    def _build_cluster_nodes(self, notes: list[MarkdownNote]) -> tuple[list[GraphNode], list[GraphEdge]]:
         combined_tags: list[str] = []
         for note in notes:
             combined_tags.extend(note.tags)

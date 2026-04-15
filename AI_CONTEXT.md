@@ -1,10 +1,10 @@
 # AI Context
 
 ## Project Summary
-- Nestbrain Research Pipeline is a local research-to-knowledge system that turns Zotero sources into Obsidian notes.
+- Nestbrain Research Pipeline is a local research-to-knowledge system that turns Zotero sources into markdown notes.
 - The current codebase contains one active primary runtime subsystem:
   - A Python desktop application in `nestbrain/`.
-- The system is designed to ingest Zotero collections, query NotebookLM, synthesize notes with NVIDIA NIM models, and write structured Markdown into an Obsidian vault.
+- The system is designed to ingest Zotero collections, query NotebookLM, synthesize notes with NVIDIA NIM models, and write structured Markdown into a note vault.
 
 ## Main Goal
 - Convert research sources into connected, durable knowledge artifacts.
@@ -16,7 +16,7 @@
 - PyQt6 desktop UI
 - requests for Zotero HTTP access
 - watchdog for local vault change monitoring
-- PyYAML for Obsidian frontmatter parsing
+- PyYAML for frontmatter parsing
 - networkx and matplotlib for graph visualization
 - notebooklm-py for native NotebookLM access
 - python-dotenv for environment loading
@@ -46,7 +46,7 @@
   - `config.json` - saved UI and pipeline settings
   - `pipeline-registry.json` - collection processing state
   - `core/pipeline_runner.py` - top-level pipeline driver
-  - `core/v2_workflow.py` - active multi-stage workflow
+  - `core/workflow_engine.py` - active multi-stage workflow
   - `core/workflow.py` - legacy workflow path, currently unused by `pipeline_runner.py`
 
 ### `nestbrain/core/`
@@ -55,15 +55,15 @@
   - `zotero_sync.py` - Zotero API client and collection and item sync
   - `notebooklm_bridge.py` - native NotebookLM bridge using notebooklm-py
   - `ollama_client.py` - despite the name, this is an NVIDIA NIM and OpenAI-compatible client
-  - `obsidian_parser.py` - scans Markdown notes in the vault
+  - `note_parser.py` - scans Markdown notes in the vault
   - `knowledge_graph.py` - builds graph payloads for the UI
-  - `note_renderer.py` - renders and merges Obsidian notes
+  - `note_renderer.py` - renders and merges markdown notes
   - `vault_manager.py` - first-launch vault initialization, classification, filing, and audit logging
   - `registry.py` - collection state persistence
-  - `stages/` - decomposed pipeline steps used by `v2_workflow.py`
+  - `stages/` - decomposed pipeline steps used by `workflow_engine.py`
 
 ### `nestbrain/core/stages/`
-- The active v2 pipeline is split into smaller responsibilities.
+- The active pipeline is split into smaller responsibilities.
 - Key files:
   - `notebooklm_stage.py` - create notebook, ingest sources, interrogate, generate media
   - `synthesis_stage.py` - combine NotebookLM output with NVIDIA model synthesis
@@ -121,7 +121,7 @@
 ## Key Modules And Roles
 - `nestbrain/main.py` - loads config, opens the Qt app, launches `MainWindow`.
 - `nestbrain/core/pipeline_runner.py` - validates vault settings, runs the workflow, archives run metadata.
-- `nestbrain/core/v2_workflow.py` - active orchestration path for the current Python pipeline.
+- `nestbrain/core/workflow_engine.py` - active orchestration path for the current Python pipeline.
 - `nestbrain/core/workflow.py` - earlier workflow decomposition; appears to be unused by the current runner.
 - `nestbrain/core/notebooklm_bridge.py` - async bridge to NotebookLM using cached auth tokens.
 - `nestbrain/core/zotero_sync.py` - fetches collections and items from Zotero and can create collections.
@@ -148,7 +148,7 @@
 14. Run metadata is saved to `nestbrain/runs/` and the registry is updated.
 
 ### UI Graph Flow
-1. Vault notes are parsed by `ObsidianParser`.
+1. Vault notes are parsed by `MarkdownNoteParser`.
 2. `GraphWorker` builds graph data.
 3. `BrainMapView` renders the graph in the UI.
 4. Zotero sync updates the collection panel separately.
@@ -164,7 +164,7 @@
 - Zotero Web API when collection creation needs remote fallback.
 - NotebookLM via notebooklm-py in Python.
 - NVIDIA NIM at `https://integrate.api.nvidia.com/v1`.
-- Obsidian vault as a filesystem-backed Markdown store.
+- Note vault as a filesystem-backed Markdown store.
 - Docker Compose for containerized local runs.
 - VcXsrv for Windows X11 rendering when using the desktop Docker profile.
 
@@ -172,12 +172,12 @@
 - The repository contains stale documentation that references folders and wrappers that are not present in the current tree, including `automation/`, `agents/`, `src/`, `mcp-servers/`, and some root wrapper scripts. Mark these as UNKNOWN if encountered elsewhere.
 - The current `docker/docker-compose.yml` only defines the `nestbrain` desktop service; several docs describe a larger service set that is not in the file.
 - `NotebookLMBridge` depends on `notebooklm-py`, but the internal auth and RPC behavior is largely opaque from this repo.
-- The current v2 Python workflow is more complete than the older `workflow.py`, but both files exist.
+- The current workflow engine is more complete than the older `workflow.py`, but both files exist.
 - Some pipeline stages are partially implemented or asymmetrical, especially media generation and note enrichment.
 - The brain map payload can be sparse depending on what the workflow returns.
 
 ## AI Agent Quick Start
-- Start with `nestbrain/main.py`, `nestbrain/core/pipeline_runner.py`, and `nestbrain/core/v2_workflow.py`.
+- Start with `nestbrain/main.py`, `nestbrain/core/pipeline_runner.py`, and `nestbrain/core/workflow_engine.py`.
 - Treat `nestbrain/` as the primary runtime.
 - Keep UI code in `nestbrain/ui/`, background work in `nestbrain/workers/`, and business logic in `nestbrain/core/`.
 - Do not trust older docs blindly; verify current files before changing architecture.

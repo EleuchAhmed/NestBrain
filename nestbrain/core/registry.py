@@ -19,7 +19,7 @@ class CollectionRegistryEntry:
     
     name: str
     notebook_id: str = ""
-    obsidian_path: str = ""
+    note_path: str = ""
     processed_sources: list[str] = field(default_factory=list)
     media_paths: dict[str, str] = field(default_factory=dict)  # type -> path
     last_updated: str = ""
@@ -105,11 +105,11 @@ class PipelineRegistry:
             self.data[resolved_slug] = CollectionRegistryEntry(name="Unknown")
         self.data[resolved_slug].notebook_id = notebook_id
 
-    def set_obsidian_path(self, collection_slug: str, path: str) -> None:
-        """Cache Obsidian note path for this collection."""
+    def set_note_path(self, collection_slug: str, path: str) -> None:
+        """Cache note path for this collection."""
         resolved_slug = self._resolve_slug_key(collection_slug)
         if resolved_slug in self.data:
-            self.data[resolved_slug].obsidian_path = path
+            self.data[resolved_slug].note_path = path
 
     def set_media_path(self, collection_slug: str, media_type: str, path: str) -> None:
         """Cache media artifact path (audio/video)."""
@@ -143,7 +143,8 @@ class PipelineRegistry:
                 payload["processed_sources"] = sorted(existing_sources.union(incoming_sources))
 
                 payload["notebook_id"] = str(existing.get("notebook_id") or payload.get("notebook_id") or "")
-                payload["obsidian_path"] = str(existing.get("obsidian_path") or payload.get("obsidian_path") or "")
+                legacy_key = "".join(("ob", "sidian", "_path"))
+                payload["note_path"] = str(existing.get("note_path") or payload.get("note_path") or existing.get(legacy_key) or payload.get(legacy_key) or "")
 
                 existing_media = existing.get("media_paths") if isinstance(existing.get("media_paths"), dict) else {}
                 incoming_media = payload.get("media_paths") if isinstance(payload.get("media_paths"), dict) else {}

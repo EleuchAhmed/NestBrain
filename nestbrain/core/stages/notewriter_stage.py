@@ -12,7 +12,7 @@ from ..note_renderer import (
 )
 from ..utils import to_slug
 from ..vault_manager import classify_and_file, log_classification_failure, find_note_path
-from ..obsidian_parser import ObsidianNote
+from ..note_parser import MarkdownNote
 from ..ollama_client import OllamaClient
 
 
@@ -25,7 +25,7 @@ async def write_note(
     vault_path: str,
     status_callback: Callable[[str], None] | None = None,
 ) -> str:
-    """Write or merge note to Obsidian vault.
+    """Write or merge note to the note vault.
     
     Args:
         collection_slug: Normalized collection slug used for file paths
@@ -33,14 +33,14 @@ async def write_note(
         items: List of items (as dicts)
         synthesis: Synthesis result
         media_paths: Dictionary with media artifact paths
-        vault_path: Path to Obsidian vault root
+        vault_path: Path to the note vault root
         status_callback: Optional progress callback
         
     Returns:
         Path to written note (relative to vault)
     """
     if status_callback:
-        status_callback("✍️ Writing note to Obsidian vault...")
+        status_callback("✍️ Writing note to note vault...")
 
     slug = collection_slug.strip() or to_slug(collection_display_name)
 
@@ -91,7 +91,7 @@ async def write_note(
 
 
 async def enrich_vault_notes(
-    notes: list[ObsidianNote],
+    notes: list[MarkdownNote],
     ollama: OllamaClient,
     progress_callback: Callable[[int], None] | None = None,
     status_callback: Callable[[str], None] | None = None,
@@ -99,7 +99,7 @@ async def enrich_vault_notes(
     """Enrich existing vault notes with summaries and semantic tags via AI.
     
     Args:
-        notes: List of ObsidianNote objects to enrich
+        notes: List of MarkdownNote objects to enrich
         ollama: OllamaClient for synthesis
         progress_callback: Optional progress callback (0-100)
         status_callback: Optional status callback

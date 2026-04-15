@@ -13,13 +13,13 @@ WIKILINK_PATTERN = re.compile(r"\[\[([^\]|#]+)(?:#[^\]]+)?(?:\|[^\]]+)?\]\]")
 TAG_PATTERN = re.compile(r"(?<!\w)#([\w\-/]+)")
 HEADING_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
-# Directories to exclude from vault scan to avoid picking up dependencies and build artifacts
+# Directories to exclude from note scanning to avoid picking up dependencies and build artifacts
 EXCLUDED_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next", ".nuxt", "target", "egg-info", ".pytest_cache"}
-MAX_NOTES_THRESHOLD = 300  # Alert if vault scan exceeds this count (suggests misconfigured path)
+MAX_NOTES_THRESHOLD = 300  # Alert if note scan exceeds this count (suggests misconfigured path)
 
 
 @dataclass(slots=True)
-class ObsidianNote:
+class MarkdownNote:
     path: str
     title: str
     tags: list[str]
@@ -31,17 +31,17 @@ class ObsidianNote:
     semantic_tags: list[str] = field(default_factory=list)
 
 
-class ObsidianParser:
-    """Parse Obsidian markdown vault notes into structured note records."""
+class MarkdownNoteParser:
+    """Parse markdown notes into structured note records."""
 
     def __init__(self, vault_path: str) -> None:
         self.vault_path = Path(vault_path).expanduser().resolve() if vault_path else Path()
 
-    def parse_vault(self) -> list[ObsidianNote]:
+    def parse_vault(self) -> list[MarkdownNote]:
         if not self.vault_path or not self.vault_path.exists() or not self.vault_path.is_dir():
             return []
 
-        notes: list[ObsidianNote] = []
+        notes: list[MarkdownNote] = []
         for md_file in self.vault_path.rglob("*.md"):
             # Skip files in excluded directories
             if any(part in EXCLUDED_DIRS for part in md_file.relative_to(self.vault_path).parts):
@@ -52,14 +52,13 @@ class ObsidianParser:
                 continue
 
         notes.sort(key=lambda note: note.last_modified, reverse=True)
-        # Track if note count seems suspiciously high (misconfigured vault path)
+        # Track if note count seems suspiciously high (misconfigured path)
         if len(notes) > MAX_NOTES_THRESHOLD:
-            # Add warning to first note's metadata for UI display
             if notes:
-                notes[0].metadata["_vault_scan_warning"] = f"Parsed {len(notes)} notes—vault path may be too broad. Configure to a specific Obsidian vault folder."
+                notes[0].metadata["_vault_scan_warning"] = f"Parsed {len(notes)} notes - path may be too broad. Configure a specific note folder."
         return notes
 
-    def parse_file(self, file_path: str | Path) -> ObsidianNote:
+    def parse_file(self, file_path: str | Path) -> MarkdownNote:
         file_path = Path(file_path)
         content = file_path.read_text(encoding="utf-8", errors="ignore")
 
@@ -69,7 +68,7 @@ class ObsidianParser:
         wikilinks = self._extract_wikilinks(body)
         last_modified = datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(timespec="seconds")
 
-        return ObsidianNote(
+        return MarkdownNote(
             path=str(file_path),
             title=title,
             tags=tags,
