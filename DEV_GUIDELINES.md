@@ -5,7 +5,7 @@
 - Python classes use PascalCase.
 - Qt signal names should stay descriptive and action-oriented.
 - Preserve existing file names unless there is a strong compatibility reason to rename them.
-- Keep the current folder convention for generated notes: `20_Concepts/{domain}/{slug}.md`.
+- Keep note output routing inside vault_manager.py classification and filing rules.
 
 ## Code Style Rules
 - Keep UI code in `nestbrain/ui/`.
@@ -19,6 +19,7 @@
 - `PipelineRunner` is the top-level Python orchestration entry point.
 - `PipelineWorkflow` in `workflow_engine.py` is the active workflow implementation used by the runner.
 - `workflow.py` is legacy and should not be treated as the primary flow unless the runner is explicitly changed.
+- Legacy modules (`workflow.py`, `notebooklm_stage.py`, `synthesis_stage.py`, `nvidia_nim_client.py`, and scripts/notebooklm_operations.py) are report-only legacy surfaces for now; do not wire new behavior through them.
 - `pipeline-registry.json` is the persistent collection state store; changing its schema requires migration logic.
 - The note vault is the primary output sink. Avoid writing arbitrary new file types into the vault root.
 - The `My Brain` vault root should stay clean; taxonomy folders are created by the classifier on demand.

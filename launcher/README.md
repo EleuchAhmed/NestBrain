@@ -23,3 +23,9 @@ Purpose: central, unambiguous startup entry points for local development and des
 1. `start-research-pipeline.vbs` starts VcXsrv and then executes `docker compose -f docker/docker-compose.yml --profile desktop up -d` from repository root.
 2. Docker currently starts the `nestbrain` desktop profile service defined in `docker/docker-compose.yml`.
 3. NotebookLM authentication is launched from the Nestbrain Settings dialog via a Python-native browser flow.
+4. `start-nestbrain-desktop.vbs` launches `.venv\Scripts\pythonw.exe -m nestbrain.main` and exits early with a setup warning when `.venv` is missing.
+
+## Current Compose Scope
+
+- The compose file currently defines one service: `nestbrain`.
+- Legacy references to additional services such as `pipeline` or `watcher` are stale and should not be treated as active architecture.

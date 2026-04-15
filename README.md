@@ -1,75 +1,169 @@
 # Nestbrain Research Pipeline
 
-Nestbrain is a professional, standalone desktop application built with Python and PyQt6. It acts as an automated bridge between your reference managers (Zotero), reading platforms (NotebookLM), local Large Language Models (Ollama), and markdown note systems.
+Nestbrain is a Python and PyQt6 desktop application that converts Zotero collections into structured Markdown knowledge notes. The active runtime path is:
 
-By running Nestbrain, you automate the extraction, synthesis, and writing of academic notes directly into your note vault.
+MainWindow -> PipelineWorker -> PipelineRunner -> PipelineWorkflow (workflow_engine.py) -> stage modules -> vault_manager classification and filing.
 
-## Vault System
+## Core Features
 
-On first launch, Nestbrain creates a single vault named `My Brain` in the app's user-data area. On Windows, that defaults to `%APPDATA%/Nestbrain/My Brain`.
+- Desktop-first orchestration in nestbrain/main.py and nestbrain/ui/main_window.py.
+- Threaded execution with Qt workers in nestbrain/workers/pipeline_worker.py, nestbrain/workers/sync_worker.py, and nestbrain/workers/graph_worker.py.
+- Zotero sync and optional collection creation through nestbrain/core/zotero_sync.py.
+- Native NotebookLM operations via notebooklm-py through nestbrain/core/notebooklm_bridge.py.
+- NVIDIA-backed planning, synthesis, extraction, classification, and embeddings through nestbrain/core/nvidia_client.py and nestbrain/core/ollama_client.py.
+- Structured pipeline stages in nestbrain/core/stages/ (question planner, Q&A loop, master synthesizer, entity extractor, note seeder, vector indexer, semantic auditor, connection annotator, note writer).
+- Vault filing and taxonomy classification in nestbrain/core/vault_manager.py.
+- Graph construction in nestbrain/core/knowledge_graph.py and rendering in nestbrain/ui/brain_map_view.py.
+- Persistent run, registry, and audit outputs: config.json, pipeline-registry.json, runs/*.json, vault_log.jsonl, seeder_log.json.
 
-The vault starts with only a root `README.md`. The AI classifier creates subfolders automatically when notes are filed, so the root stays clean and no taxonomy folders are pre-created.
+## Installation and Setup (Source)
 
-Every filed note gets an AI classification footer and an audit record in `vault_log.jsonl`.
+### Prerequisites
 
-## Features
-- **Standalone Architecture:** Single-click PyInstaller executable; no Node.js or TypeScript required.
-- **Native Browser Automation:** Uses underlying Playwright libraries combined with native `notebooklm-py` API for NotebookLM synchronization.
-- **DeepSeek Integration:** Summarizes references using NVIDIA NIM DeepSeek V3.1 via API.
-- **Zotero & Note Bridges:** Automatically pulls recent Zotero highlights, generates rich conceptual notes, and deposits them cleanly formatted into the note vault.
+1. Python 3.11 or newer.
+2. Zotero running locally (default host http://localhost:23119).
+3. NVIDIA API key for NIM-backed model calls.
+4. NotebookLM account for authentication.
 
-## Requirements
+### Setup Steps
 
-1. **Python 3.11+** (if running from source)
-2. **NVIDIA API Key**: Must provide `NVIDIA_API_KEY` environment variable.
-3. **Zotero**: Should be running locally (default: `http://localhost:23119`) with API integrations enabled.
-4. **NotebookLM**: You must manually authenticate to NotebookLM the first time via the App's browser context.
-
-## Local Development Setup
-
-To run from source:
 ```bash
-# 1. Clone repository
+# 1) Clone
 git clone https://github.com/EleuchAhmed/NestBrain.git
 cd NestBrain
 
-# 2. Setup Virtual Environment
+# 2) Create and activate virtual environment (required by launcher scripts)
 python -m venv .venv
-.venv\Scripts\activate  # Windows
+.venv\Scripts\activate
 
-# 3. Install Dependencies
+# 3) Install dependencies
 pip install -r nestbrain/requirements.txt
 playwright install chromium
 
-# 4. Copy Environment configuration
-cp .env.example .env
-# Edit .env with your specific paths and API keys
+# 4) Optional: create local env file
+copy .env.example .env
 
-# 5. Run the app
+# 5) Start desktop app
 python -m nestbrain.main
 ```
 
-## Packaging (Releasing the Executable)
+### First Run Checklist
 
-Nestbrain uses `PyInstaller` for packaging.
+1. Open Settings and confirm vault path.
+2. Add Zotero Library ID and Zotero API key if needed.
+3. Add NVIDIA API key in settings (or NVIDIA_API_KEY in environment).
+4. Run NotebookLM authentication from Settings.
 
-To build the executable:
+Notes:
+
+- The app persists operational settings in the user-data config JSON, not only in .env.
+- .env is used for environment-backed credentials and local Docker startup values.
+
+## Launcher and Docker Runtime
+
+- launcher/windows/start-nestbrain-desktop.vbs starts the app from .venv/Scripts/pythonw.exe.
+- launcher/windows/start-research-pipeline.vbs starts VcXsrv and then runs docker compose -f docker/docker-compose.yml --profile desktop up -d.
+- docker/docker-compose.yml currently defines one service: nestbrain (desktop profile).
+
+## Packaging
+
+Build the standalone executable with:
+
 ```cmd
 .\scripts\build.bat
 ```
-The standalone `.exe` will be located in `scripts\dist\Nestbrain.exe`. You can distribute this single file directly.
 
-## Environment Variables (.env)
-- `NOTE_VAULT_PATH`: Absolute path to your note vault.
-- `ZOTERO_LIBRARY_ID` and `ZOTERO_API_KEY`: Credentials for Zotero sync.
-- `NVIDIA_API_KEY`: Your NVIDIA NIM API key for DeepSeek V3.1.
+Output binary: scripts/dist/Nestbrain.exe.
 
-## Architecture
-- **Application Core**: `nestbrain/main.py`
-- **GUI Views**: `nestbrain/views/`
-- **Business Logic**: `nestbrain/core/workflow.py`, `nestbrain/core/pipeline_runner.py`
-- **NotebookLM Wrapper**: `nestbrain/core/notebooklm_bridge.py`
-- **Vault Policy Layer**: `nestbrain/core/vault_manager.py`
+## Project Structure (Current)
+
+```text
+research-pipeline/
+	README.md
+	ARCHITECTURE.md
+	DEV_GUIDELINES.md
+	AI_CONTEXT.md
+	KNOWN_ISSUES.md
+	STRUCTURE_MAP.md
+	pipeline_context.md
+	launcher/
+		README.md
+		windows/
+			start-application.cmd
+			start-nestbrain-desktop.vbs
+			start-research-pipeline.vbs
+	docker/
+		docker-compose.yml
+		Dockerfile.nestbrain
+	scripts/
+		README.md
+		build.bat
+		build.spec
+		notebooklm_operations.py (legacy compatibility wrapper)
+	nestbrain/
+		main.py
+		core/
+			pipeline_runner.py
+			workflow_engine.py (active)
+			workflow.py (legacy path)
+			vault_manager.py
+			registry.py
+			note_parser.py
+			knowledge_graph.py
+			notebooklm_bridge.py
+			zotero_sync.py
+			nvidia_client.py
+			ollama_client.py
+			stages/
+				question_planner.py
+				q_and_a_loop.py
+				master_synthesizer.py
+				entity_extractor.py
+				note_seeder.py
+				vector_indexer.py
+				semantic_auditor.py
+				connection_annotator.py
+				notewriter_stage.py
+				notebooklm_stage.py (legacy stage module)
+				synthesis_stage.py (legacy stage module)
+		ui/
+			main_window.py
+			workspace.py
+			sidebar.py
+			zotero_panel.py
+			brain_map_view.py
+		workers/
+			pipeline_worker.py
+			sync_worker.py
+			graph_worker.py
+		runs/
+			run_YYYYMMDD_HHMMSS.json
+	pipeline_logs/ (generated)
+	staging/ (generated)
+	build/ (generated)
+```
+
+## Runtime State and Persistence
+
+- User config path is managed via nestbrain/core/paths.py and saved by load_config/save_config in nestbrain/core/pipeline_runner.py.
+- Collection processing state is persisted with PipelineRegistry in nestbrain/core/registry.py.
+- Vault notes are classified and filed by classify_and_file in nestbrain/core/vault_manager.py.
+- Classification audit lines are appended to vault_log.jsonl.
+- Seeder decisions are appended to seeder_log.json.
+- Run archive snapshots are created in user-data runs directory by PipelineRunner._create_archive_entry.
+
+## Dead Code and Legacy Surface (Report)
+
+The following files remain in-tree but are not part of the active runner path and should be treated as legacy until removed in a separate cleanup task:
+
+- nestbrain/core/workflow.py
+- nestbrain/core/stages/notebooklm_stage.py
+- nestbrain/core/stages/synthesis_stage.py
+- nestbrain/core/nvidia_nim_client.py
+- scripts/notebooklm_operations.py
+
+Also note that test_note_renderer_registry_media.py includes legacy imports for notebooklm_stage and should be reviewed in a dedicated test cleanup pass.
 
 ## License
+
 MIT

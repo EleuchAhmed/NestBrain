@@ -69,7 +69,7 @@ user-invocable: true
 3. Check integration boundaries in order:
 - Zotero sync (zotero_sync.py)
 - NotebookLM bridge/auth (notebooklm_bridge.py and auth modules)
-- NVIDIA NIM client availability (nvidia_nim_client.py)
+- NVIDIA NIM client availability (nvidia_client.py and ollama_client.py)
 4. For per-collection failures, inspect workflow_engine process_collection path and stage status messages.
 5. Inspect run outputs:
 - nestbrain/runs/*.json
@@ -100,6 +100,7 @@ user-invocable: true
 
 ## Common Failure Patterns
 - Editing legacy workflow.py while expecting runner behavior changes.
+- Editing legacy stage files (notebooklm_stage.py and synthesis_stage.py) while expecting runner behavior changes.
 - Writing vault paths directly in stages instead of routing through vault manager policies.
 - Updating graph generation without corresponding UI graph view handling.
 - Trusting stale docs that mention missing folders (agents/, automation/, src/ root).

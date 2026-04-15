@@ -1,12 +1,18 @@
 # Pipeline Context
 
+Design intent document. This file captures target architecture direction. For current implementation truth, use ARCHITECTURE.md, README.md, and nestbrain/core/workflow_engine.py.
+
 What you're building
 A self-expanding, interconnected knowledge graph in a note vault, where an AI agent researches, links, and propagates knowledge across the vault automatically.
 
 Current state
 - User inputs a subject.
-- AI queries NotebookLM once.
-- AI writes a single note to the note vault.
+- PipelineRunner validates vault and delegates to PipelineWorkflow in workflow_engine.py.
+- Workflow syncs Zotero collections and ingests new sources into NotebookLM.
+- Question planner builds research taxonomy, Q&A loop runs iterative interrogation, and master synthesizer builds the deep-dive note body.
+- Entity extraction and NoteSeeder create or merge concept notes.
+- Notewriter stage renders collection note, then vault_manager classifies and files it.
+- L3 propagation runs vector indexing, semantic auditing, and connection annotation for related notes.
 
 Target state - the three layers
 Layer 1 - Dynamic deep research per subject
@@ -24,6 +30,8 @@ When any note is created or updated, the AI runs a semantic similarity pass over
 - Add a mention of the new note.
 - Optionally append a short explanation of the connection.
 - Log what was updated so the user can review changes.
+
+Implementation note: Layer 3 is implemented through vector_indexer.py, semantic_auditor.py, and connection_annotator.py. It operates on candidate matches and does not yet provide a separate user-facing propagation report beyond note updates and existing logs.
 
 Architecture decisions to make
 - Vault index format: full text vs embeddings.

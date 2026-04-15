@@ -2,6 +2,15 @@
 
 All notable changes to the Nestbrain Research Pipeline will be documented in this file.
 
+## [Unreleased] - 2026-04-15
+
+### Changed
+- Synchronized repository Markdown documentation with active Python runtime and workflow ownership.
+- Rewrote top-level README with current setup flow, feature list, and structure map.
+- Updated architecture and context docs to reflect the active `pipeline_runner.py -> workflow_engine.py` path.
+- Updated launcher and scripts docs to remove stale service and folder assumptions.
+- Updated known issues to remove stale claims and add explicit legacy/dead-code reporting notes.
+
 ## [Unreleased] - 2026-04-08
 
 ### Added
