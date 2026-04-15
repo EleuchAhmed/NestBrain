@@ -83,32 +83,29 @@ def get_app_stylesheet() -> str:
         color: {t['text_secondary']};
     }}
 
-    QDialog#SettingsDialog {{
-        background-color: rgba(26, 14, 46, 0.95);
-    }}
-
     #SettingsDialogTitle {{
         color: {t['text_primary']};
-        font-size: 22px;
+        font-size: 19px;
         font-weight: 800;
     }}
 
     #SettingsDialogSectionHint {{
         color: {t['text_hint']};
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 500;
+        margin-bottom: 2px;
     }}
 
     #SettingsSectionCard,
     #SettingsButtonRow {{
         background-color: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(216, 191, 255, 0.08);
+        border: none;
         border-radius: {RADIUS_SCALE['panel']}px;
     }}
 
     #SettingsSectionTitle {{
         color: {t['text_primary']};
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
@@ -118,20 +115,35 @@ def get_app_stylesheet() -> str:
         color: {t['text_muted']};
         font-size: 11px;
         font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.01em;
+    }}
+
+    #SettingsGroupLabel {{
+        color: {t['text_primary']};
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-top: 4px;
+    }}
+
+    #SettingsGroupDivider {{
+        background-color: rgba(255, 255, 255, 0.08);
+        min-height: 1px;
+        max-height: 1px;
+        border: none;
+        margin: 2px 0;
     }}
 
     #NotebookLMStatusLabel {{
-        color: {t['text_muted']};
-        font-size: 12px;
-        font-weight: 600;
-        padding-left: 4px;
+        color: {t['text_hint']};
+        font-size: 11px;
+        font-weight: 500;
+        padding-left: 6px;
     }}
 
     #SettingsPrimaryButton {{
-        min-height: 36px;
-        padding: 0 18px;
+        min-height: 30px;
+        padding: 0 14px;
         border-radius: {RADIUS_SCALE['pill']}px;
         color: {t['text_primary']};
         border: none;
@@ -144,8 +156,8 @@ def get_app_stylesheet() -> str:
     }}
 
     #SettingsSecondaryButton {{
-        min-height: 36px;
-        padding: 0 18px;
+        min-height: 30px;
+        padding: 0 14px;
         border-radius: {RADIUS_SCALE['pill']}px;
         font-weight: 600;
         background-color: rgba(255, 255, 255, 0.06);
@@ -160,8 +172,8 @@ def get_app_stylesheet() -> str:
 
     #SettingsBrowseButton,
     #SettingsActionButton {{
-        min-height: 34px;
-        padding: 0 14px;
+        min-height: 30px;
+        padding: 0 12px;
         border-radius: {RADIUS_SCALE['pill']}px;
         font-weight: 600;
         background-color: rgba(255, 255, 255, 0.06);
@@ -345,11 +357,24 @@ def get_app_stylesheet() -> str:
     }}
 
     QDialog#SettingsDialog QLineEdit {{
-        min-height: 34px;
+        min-height: 28px;
+        background-color: rgba(255, 255, 255, 0.06);
+        border: none;
+        border-radius: {RADIUS_SCALE['input']}px;
+        padding: 6px 10px;
+        color: {t['text_secondary']};
+        selection-background-color: rgba(216, 191, 255, 0.12);
+        selection-color: {t['selection_fg']};
+    }}
+
+    QDialog#SettingsDialog QLineEdit:focus {{
+        border: none;
+        background-color: rgba(216, 191, 255, 0.12);
+        color: {t['text_primary']};
     }}
 
     QDialog#SettingsDialog QPushButton {{
-        min-height: 34px;
+        min-height: 30px;
     }}
 
     #PipelineLeftColumn,

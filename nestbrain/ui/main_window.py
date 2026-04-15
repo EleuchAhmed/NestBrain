@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
+    QFrame,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -20,6 +21,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStackedLayout,
     QVBoxLayout,
     QWidget,
@@ -44,14 +47,15 @@ class SettingsDialog(QDialog):
         self.setObjectName("SettingsDialog")
         self.setWindowTitle("Nestbrain Settings")
         self.setModal(True)
-        self.resize(700, 460)
+        self.setMinimumSize(620, 420)
+        self.resize(660, 500)
 
         self._config = config
         self._auth_process: QProcess | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(22, 20, 22, 18)
-        root.setSpacing(14)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(6)
 
         title = QLabel("Settings")
         title.setObjectName("SettingsDialogTitle")
@@ -61,8 +65,8 @@ class SettingsDialog(QDialog):
         config_card = QWidget()
         config_card.setObjectName("SettingsSectionCard")
         config_layout = QVBoxLayout(config_card)
-        config_layout.setContentsMargins(16, 14, 16, 14)
-        config_layout.setSpacing(12)
+        config_layout.setContentsMargins(10, 8, 10, 8)
+        config_layout.setSpacing(6)
 
         config_title = QLabel("Configuration")
         config_title.setObjectName("SettingsSectionTitle")
@@ -70,13 +74,26 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
-        form.setHorizontalSpacing(16)
-        form.setVerticalSpacing(12)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(6)
 
         def _field_label(text: str) -> QLabel:
             label = QLabel(text)
             label.setObjectName("SettingsFieldLabel")
             return label
+
+        def _section_label(text: str) -> QLabel:
+            label = QLabel(text)
+            label.setObjectName("SettingsGroupLabel")
+            return label
+
+        def _section_divider() -> QFrame:
+            divider = QFrame()
+            divider.setFrameShape(QFrame.Shape.HLine)
+            divider.setFrameShadow(QFrame.Shadow.Plain)
+            divider.setObjectName("SettingsGroupDivider")
+            return divider
 
         vault_row = QHBoxLayout()
         vault_row.setSpacing(8)
@@ -106,6 +123,7 @@ class SettingsDialog(QDialog):
         self.zotero_host_input.setPlaceholderText("http://localhost:23119")
 
         notebooklm_row = QHBoxLayout()
+        notebooklm_row.setContentsMargins(0, 0, 0, 0)
         notebooklm_row.setSpacing(8)
         self.notebooklm_auth_btn = QPushButton("Authenticate")
         self.notebooklm_auth_btn.setObjectName("SettingsActionButton")
@@ -113,23 +131,38 @@ class SettingsDialog(QDialog):
         self.notebooklm_refresh_btn.setObjectName("SettingsActionButton")
         self.notebooklm_status_label = QLabel("")
         self.notebooklm_status_label.setObjectName("NotebookLMStatusLabel")
+        self.notebooklm_status_label.setWordWrap(True)
+        self.notebooklm_status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         notebooklm_row.addWidget(self.notebooklm_auth_btn)
         notebooklm_row.addWidget(self.notebooklm_refresh_btn)
-        notebooklm_row.addWidget(self.notebooklm_status_label, 1)
 
         notebooklm_wrap = QWidget()
-        notebooklm_wrap.setLayout(notebooklm_row)
+        notebooklm_layout = QVBoxLayout(notebooklm_wrap)
+        notebooklm_layout.setContentsMargins(0, 0, 0, 0)
+        notebooklm_layout.setSpacing(4)
+        notebooklm_layout.addLayout(notebooklm_row)
+        notebooklm_layout.addWidget(self.notebooklm_status_label)
 
         self.notebooklm_auth_btn.clicked.connect(self._authenticate_notebooklm)
         self.notebooklm_refresh_btn.clicked.connect(self._refresh_notebooklm_status)
 
-        form.addRow(_field_label("Vault Path"), vault_wrap)
-        form.addRow(_field_label("NVIDIA API Key"), self.nvidia_api_key_input)
-        form.addRow(_field_label("Zotero Library ID"), self.zotero_id_input)
-        form.addRow(_field_label("Zotero API Key"), self.zotero_api_key_input)
-        form.addRow(_field_label("NVIDIA NIM Host / Base URL"), self.nvidia_host_input)
-        form.addRow(_field_label("Zotero Host"), self.zotero_host_input)
-        form.addRow(_field_label("NotebookLM Account"), notebooklm_wrap)
+        form.addRow(_section_label("Vault"))
+        form.addRow(_field_label("Vault path"), vault_wrap)
+        form.addRow(_section_divider())
+
+        form.addRow(_section_label("API Credentials"))
+        form.addRow(_field_label("NVIDIA API key"), self.nvidia_api_key_input)
+        form.addRow(_field_label("Zotero library ID"), self.zotero_id_input)
+        form.addRow(_field_label("Zotero API key"), self.zotero_api_key_input)
+        form.addRow(_section_divider())
+
+        form.addRow(_section_label("Service Endpoints"))
+        form.addRow(_field_label("NVIDIA NIM host"), self.nvidia_host_input)
+        form.addRow(_field_label("Zotero host"), self.zotero_host_input)
+        form.addRow(_section_divider())
+
+        form.addRow(_section_label("NotebookLM Account"))
+        form.addRow(_field_label("NotebookLM"), notebooklm_wrap)
 
         config_layout.addWidget(config_title)
         config_layout.addLayout(form)
@@ -138,7 +171,9 @@ class SettingsDialog(QDialog):
         button_row_wrap = QWidget()
         button_row_wrap.setObjectName("SettingsButtonRow")
         button_row_wrap.setLayout(button_row)
-        button_row.setSpacing(8)
+        button_row_wrap.setMinimumHeight(38)
+        button_row_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        button_row.setSpacing(6)
         cancel_button = QPushButton("Cancel")
         cancel_button.setObjectName("SettingsSecondaryButton")
         save_button = QPushButton("Save")
@@ -151,9 +186,15 @@ class SettingsDialog(QDialog):
         button_row.addWidget(cancel_button)
         button_row.addWidget(save_button)
 
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(config_card)
+
         root.addWidget(title)
         root.addWidget(subtitle)
-        root.addWidget(config_card)
+        root.addWidget(scroll, 1)
         root.addWidget(button_row_wrap)
         self._refresh_notebooklm_status()
 

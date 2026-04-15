@@ -54,7 +54,7 @@ async def write_note(
             encoding="utf-8",
             delete=False,
             suffix=resolved_existing.suffix or ".md",
-            prefix=f".{slug}.",
+            prefix=f"{slug}.",
             dir=str(resolved_existing.parent),
         ) as handle:
             handle.write(note_content)
@@ -69,7 +69,7 @@ async def write_note(
         encoding="utf-8",
         delete=False,
         suffix=".md",
-        prefix=f".{slug}.",
+        prefix=f"{slug}.",
         dir=vault_path,
     ) as handle:
         handle.write(note_content)
