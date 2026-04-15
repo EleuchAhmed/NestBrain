@@ -320,7 +320,7 @@ class MainWindow(QMainWindow):
         self._graph_worker: GraphWorker | None = None
         self._selected_collection_key = self.config.selected_collection_key.strip()
 
-        self.top_nav = TopNavBar(self)
+        self.top_nav = TopNavBar(self, logo_path=assets_dir / "logo.png")
         self.workspace = Workspace(self)
         self.ambient_background = AmbientNodeBackground()
 

@@ -197,6 +197,18 @@ def get_app_stylesheet() -> str:
         border: none;
     }}
 
+    #TopNavLogoFrame {{
+        background: transparent;
+        border: none;
+    }}
+
+    #TopNavLogo {{
+        color: {t['text_primary']};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+    }}
+
     #TopNavRail {{
         background: transparent;
         border: none;

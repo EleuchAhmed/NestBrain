@@ -16,6 +16,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('../nestbrain/assets/app.ico', 'nestbrain/assets'),
+        ('../nestbrain/assets/logo.png', 'nestbrain/assets'),
         ('../launcher/windows/start-application.cmd', 'launcher/windows'),
         ('../launcher/windows/start-nestbrain-desktop.vbs', 'launcher/windows'),
         ('../launcher/windows/start-research-pipeline.vbs', 'launcher/windows'),
