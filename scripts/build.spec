@@ -8,7 +8,17 @@ block_cipher = None
 hidden_imports = []
 hidden_imports += collect_submodules('nestbrain')
 hidden_imports += collect_submodules('notebooklm')
-hidden_imports += ['pyqtgraph', 'networkx', 'OpenGL', 'playwright', 'requests', 'yaml']
+hidden_imports += [
+    'pyqtgraph',
+    'networkx',
+    'OpenGL',
+    'playwright',
+    'requests',
+    'yaml',
+    'dotenv',
+    'openai',
+    'PIL',
+]
 
 a = Analysis(
     ['../nestbrain/main.py'],
@@ -18,6 +28,7 @@ a = Analysis(
         ('../nestbrain/assets/app.ico', 'nestbrain/assets'),
         ('../nestbrain/assets/logo.png', 'nestbrain/assets'),
         ('../launcher/windows/start-application.cmd', 'launcher/windows'),
+        ('../launcher/windows/start-nestbrain-desktop.cmd', 'launcher/windows'),
         ('../launcher/windows/start-nestbrain-desktop.vbs', 'launcher/windows'),
         ('../launcher/windows/start-research-pipeline.vbs', 'launcher/windows'),
     ],
@@ -37,9 +48,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    [],
     [],
     name='Nestbrain',
     debug=False,
@@ -55,4 +64,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='../nestbrain/assets/app.ico',
+    version='version_info.txt',
+    exclude_binaries=True,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Nestbrain',
 )

@@ -1,0 +1,113 @@
+NESTBRAIN RESEARCH PIPELINE
+END USER LICENSE AGREEMENT (EULA)
+
+Last Updated: 2026-04-16
+
+IMPORTANT: PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY.
+BY INSTALLING, COPYING, OR OTHERWISE USING THE SOFTWARE, YOU AGREE TO BE BOUND
+BY THE TERMS OF THIS AGREEMENT.
+
+1. PARTIES
+
+This End User License Agreement ("Agreement") is a legal agreement between you
+(an individual or legal entity) and Nestbrain ("Licensor") for the Nestbrain
+Research Pipeline software, including executable programs, associated media,
+documentation, and updates (collectively, the "Software").
+
+2. LICENSE GRANT
+
+Subject to your compliance with this Agreement, Licensor grants you a limited,
+non-exclusive, non-transferable, non-sublicensable license to install and use
+the Software on devices you own or control for your internal personal or
+business research workflows.
+
+3. RESTRICTIONS
+
+You may not, and may not permit others to:
+
+- Copy, modify, adapt, translate, or create derivative works of the Software,
+	except as expressly permitted by applicable law.
+- Reverse engineer, decompile, disassemble, or otherwise attempt to derive
+	source code, except to the extent such restriction is prohibited by law.
+- Rent, lease, lend, sell, sublicense, assign, distribute, publish, or
+	otherwise make the Software available to third parties except as explicitly
+	authorized by Licensor in writing.
+- Remove or alter proprietary notices, labels, or trademarks in the Software.
+- Use the Software in violation of applicable laws, regulations, or third-party
+	rights.
+
+4. OWNERSHIP
+
+The Software is licensed, not sold. Licensor and its licensors retain all
+right, title, and interest in and to the Software, including all intellectual
+property rights.
+
+5. THIRD-PARTY COMPONENTS
+
+The Software may include third-party open source or proprietary components that
+are subject to separate license terms. Your use of those components is governed
+by their applicable terms in addition to this Agreement.
+
+6. UPDATES AND CHANGES
+
+Licensor may provide updates, patches, or new versions at its discretion.
+Unless accompanied by separate terms, updates are governed by this Agreement.
+
+7. DATA AND EXTERNAL SERVICES
+
+The Software may interoperate with third-party services and APIs. Licensor is
+not responsible for availability, content, policies, or practices of third-
+party services. You are responsible for complying with third-party terms and
+for obtaining all necessary rights and permissions for data processed through
+the Software.
+
+8. DISCLAIMER OF WARRANTIES
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS" AND
+"AS AVAILABLE," WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR
+STATUTORY, INCLUDING WITHOUT LIMITATION WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+9. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL LICENSOR OR ITS
+AFFILIATES, LICENSORS, OR SUPPLIERS BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOSS OF PROFITS,
+REVENUE, DATA, GOODWILL, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATED TO
+THE SOFTWARE OR THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGES.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR'S TOTAL LIABILITY ARISING OUT
+OF OR RELATED TO THIS AGREEMENT WILL NOT EXCEED THE AMOUNT YOU PAID FOR THE
+SOFTWARE DURING THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+10. TERM AND TERMINATION
+
+This Agreement is effective until terminated. Your rights terminate
+automatically if you fail to comply with this Agreement. Upon termination, you
+must stop all use of the Software and destroy all copies in your possession or
+control.
+
+11. EXPORT AND SANCTIONS COMPLIANCE
+
+You agree to comply with all applicable export control and sanctions laws.
+
+12. GOVERNING LAW
+
+This Agreement is governed by the laws of the jurisdiction where Licensor is
+established, excluding conflict-of-law principles, unless otherwise required by
+applicable law.
+
+13. ENTIRE AGREEMENT
+
+This Agreement constitutes the entire agreement between you and Licensor
+regarding the Software and supersedes prior or contemporaneous communications on
+the same subject matter.
+
+14. CONTACT
+
+For licensing or legal inquiries, contact:
+Nestbrain
+[INSERT LEGAL CONTACT EMAIL OR ADDRESS]
+
+If you do not agree to these terms, do not install or use the Software.
