@@ -4,12 +4,18 @@ All notable changes to the Nestbrain Research Pipeline will be documented in thi
 
 ## [Unreleased] - 2026-04-15
 
+### Fixed
+- NotebookLM installer authentication reliability by bundling Playwright Chromium runtime in frozen builds and adding a build-time Chromium presence check.
+- NotebookLM Settings authentication diagnostics by surfacing subprocess output in the UI when browser auth fails.
+- NotebookLM authentication resilience by adding trusted-browser-first auth with automatic fallback to bundled Playwright mode.
+
 ### Changed
 - Synchronized repository Markdown documentation with active Python runtime and workflow ownership.
 - Rewrote top-level README with current setup flow, feature list, and structure map.
 - Updated architecture and context docs to reflect the active `pipeline_runner.py -> workflow_engine.py` path.
 - Updated launcher and scripts docs to remove stale service and folder assumptions.
 - Updated known issues to remove stale claims and add explicit legacy/dead-code reporting notes.
+- Added NotebookLM auth mode documentation for installer and runtime environment overrides.
 
 ## [Unreleased] - 2026-04-08
 

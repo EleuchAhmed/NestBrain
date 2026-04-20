@@ -102,6 +102,17 @@ class PipelineRunner:
         )
         ollama = NvidiaLLMClient(host=config.ollama_host, api_key=config.nvidia_api_key)
         graph_builder = KnowledgeGraphBuilder()
+
+        # ── Inject the Settings-panel API key into the module-level singleton
+        #    used by all stage modules (QuestionPlanner, MasterSynthesizer,
+        #    EntityExtractor, NoteSeeder, VectorIndexer, etc.).
+        #    The singleton is created at import time when the env-var may not
+        #    yet exist, so we patch it here before any stage executes.
+        from .nvidia_client import nvidia_client as _nvidia_singleton
+        _nvidia_singleton.configure(config.nvidia_api_key)
+        import os as _os
+        if config.nvidia_api_key.strip():
+            _os.environ["NVIDIA_API_KEY"] = config.nvidia_api_key.strip()
         
         # Delegate to workflow
         workflow_result = await self.workflow.run_full_pipeline(

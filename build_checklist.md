@@ -45,6 +45,7 @@ scripts\build_installer.bat
 ## Build Output Verification
 
 - scripts/dist/Nestbrain/Nestbrain.exe exists.
+- Playwright Chromium runtime exists somewhere under scripts/dist/Nestbrain (validated by build.bat).
 - dist/installer/NestbrainSetup.exe exists.
 - installer compilation exits with code 0.
 - build_installer.bat exits with code 0.

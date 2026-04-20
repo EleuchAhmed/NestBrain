@@ -8,6 +8,7 @@ block_cipher = None
 hidden_imports = []
 hidden_imports += collect_submodules('nestbrain')
 hidden_imports += collect_submodules('notebooklm')
+hidden_imports += collect_submodules('playwright')
 hidden_imports += [
     'pyqtgraph',
     'networkx',
@@ -31,7 +32,7 @@ a = Analysis(
         ('../launcher/windows/start-nestbrain-desktop.cmd', 'launcher/windows'),
         ('../launcher/windows/start-nestbrain-desktop.vbs', 'launcher/windows'),
         ('../launcher/windows/start-research-pipeline.vbs', 'launcher/windows'),
-    ],
+    ] + collect_data_files('playwright'),
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},

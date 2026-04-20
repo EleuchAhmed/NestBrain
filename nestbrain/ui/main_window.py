@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import replace
 from dataclasses import asdict
 from datetime import datetime
+import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QProcess, QThread, Qt
+from PyQt6.QtCore import QProcess, QProcessEnvironment, QThread, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -41,6 +43,9 @@ from ..workers.pipeline_worker import PipelineWorker
 from ..workers.sync_worker import SyncWorker
 
 
+logger = logging.getLogger(__name__)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, config: PipelineConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -52,6 +57,7 @@ class SettingsDialog(QDialog):
 
         self._config = config
         self._auth_process: QProcess | None = None
+        self._auth_output: str = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -127,6 +133,8 @@ class SettingsDialog(QDialog):
         notebooklm_row.setSpacing(8)
         self.notebooklm_auth_btn = QPushButton("Authenticate")
         self.notebooklm_auth_btn.setObjectName("SettingsActionButton")
+        self.notebooklm_import_btn = QPushButton("Import Auth JSON")
+        self.notebooklm_import_btn.setObjectName("SettingsActionButton")
         self.notebooklm_refresh_btn = QPushButton("Refresh Status")
         self.notebooklm_refresh_btn.setObjectName("SettingsActionButton")
         self.notebooklm_status_label = QLabel("")
@@ -134,6 +142,7 @@ class SettingsDialog(QDialog):
         self.notebooklm_status_label.setWordWrap(True)
         self.notebooklm_status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         notebooklm_row.addWidget(self.notebooklm_auth_btn)
+        notebooklm_row.addWidget(self.notebooklm_import_btn)
         notebooklm_row.addWidget(self.notebooklm_refresh_btn)
 
         notebooklm_wrap = QWidget()
@@ -144,6 +153,7 @@ class SettingsDialog(QDialog):
         notebooklm_layout.addWidget(self.notebooklm_status_label)
 
         self.notebooklm_auth_btn.clicked.connect(self._authenticate_notebooklm)
+        self.notebooklm_import_btn.clicked.connect(self._import_notebooklm_auth_json)
         self.notebooklm_refresh_btn.clicked.connect(self._refresh_notebooklm_status)
 
         form.addRow(_section_label("Vault"))
@@ -218,30 +228,48 @@ class SettingsDialog(QDialog):
             process.setProgram(sys.executable)
             process.setArguments(arguments)
             process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+            process.setProcessEnvironment(QProcessEnvironment.systemEnvironment())
+            self._auth_output = ""
+            process.readyReadStandardOutput.connect(self._on_notebooklm_auth_output)
             process.finished.connect(self._on_notebooklm_auth_finished)
             process.errorOccurred.connect(self._on_notebooklm_auth_error)
             self._auth_process = process
 
             self.notebooklm_auth_btn.setEnabled(False)
-            self.notebooklm_status_label.setText("Authentication in progress. Complete login in the browser window.")
+            self.notebooklm_status_label.setText(
+                "Authentication in progress. Nestbrain will try trusted system browser mode first, "
+                "then fallback mode if needed."
+            )
             process.start()
             if not process.waitForStarted(3000):
+                startup_output = self._consume_auth_output(process)
                 self.notebooklm_auth_btn.setEnabled(True)
                 self._auth_process = None
                 process.deleteLater()
-                raise RuntimeError(process.errorString() or "Process failed to start.")
+                details = process.errorString() or startup_output or "Process failed to start."
+                raise RuntimeError(details)
         except Exception as exc:
             QMessageBox.critical(self, "NotebookLM Authentication Failed", f"Could not launch authentication flow:\n{exc}")
 
     def _on_notebooklm_auth_error(self, _error: QProcess.ProcessError) -> None:
         self.notebooklm_auth_btn.setEnabled(True)
-        self.notebooklm_status_label.setText("Authentication failed to start. Please try again.")
+        details = ""
         if self._auth_process:
+            details = self._consume_auth_output(self._auth_process)
             self._auth_process.deleteLater()
             self._auth_process = None
 
+        if details:
+            self.notebooklm_status_label.setText(
+                f"Authentication failed to start: {details[:220]}"
+            )
+            logger.error("NotebookLM auth failed to start: %s", details)
+        else:
+            self.notebooklm_status_label.setText("Authentication failed to start. Please try again.")
+
     def _on_notebooklm_auth_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
         self.notebooklm_auth_btn.setEnabled(True)
+        details = self._consume_auth_output(self._auth_process)
 
         if exit_status == QProcess.ExitStatus.NormalExit and exit_code == 0:
             self._refresh_notebooklm_status()
@@ -250,13 +278,88 @@ class SettingsDialog(QDialog):
                     "Authentication finished, but tokens were not detected. Please retry."
                 )
         else:
-            self.notebooklm_status_label.setText(
-                "Authentication did not complete successfully. Please try again."
+            if details:
+                guidance = self._auth_failure_guidance(details)
+                self.notebooklm_status_label.setText(guidance)
+            else:
+                self.notebooklm_status_label.setText(
+                    "Authentication did not complete successfully. Please try again."
+                )
+            logger.error(
+                "NotebookLM auth exited with code=%s status=%s output=%s",
+                exit_code,
+                exit_status,
+                details,
             )
 
         if self._auth_process:
             self._auth_process.deleteLater()
             self._auth_process = None
+
+    def _on_notebooklm_auth_output(self) -> None:
+        if self._auth_process:
+            self._consume_auth_output(self._auth_process)
+
+    def _consume_auth_output(self, process: QProcess | None) -> str:
+        if not process:
+            return self._auth_output.strip()
+
+        raw = bytes(process.readAllStandardOutput())
+        if raw:
+            text = raw.decode("utf-8", errors="replace")
+            self._auth_output += text
+        return self._auth_output.strip()
+
+    def _import_notebooklm_auth_json(self) -> None:
+        from ..core.notebooklm_auth import save_auth_payload
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select NotebookLM auth JSON",
+            str(Path.home()),
+            "JSON files (*.json);;All files (*.*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            payload = json.loads(Path(file_path).read_text(encoding="utf-8"))
+            saved_path = save_auth_payload(payload)
+            self._refresh_notebooklm_status()
+            self.notebooklm_status_label.setText(
+                f"Authentication imported successfully from {saved_path}."
+            )
+        except Exception as exc:
+            logger.error("Failed to import NotebookLM auth JSON from %s: %s", file_path, exc)
+            QMessageBox.critical(
+                self,
+                "NotebookLM Auth Import Failed",
+                (
+                    "Could not import the selected auth file.\n\n"
+                    "Expected JSON with 'cookies' and 'csrf_token' fields.\n"
+                    f"Details: {exc}"
+                ),
+            )
+
+    def _auth_failure_guidance(self, details: str) -> str:
+        summary = details.replace("\n", " ").strip()
+        normalized = summary.lower()
+        insecure_signals = [
+            "browser is not secure",
+            "couldn't sign you in",
+            "could not sign you in",
+            "this browser or app may not be secure",
+            "try using a different browser",
+        ]
+        if any(signal in normalized for signal in insecure_signals):
+            return (
+                "Google rejected sign-in from the embedded auth browser. "
+                "Use 'Import Auth JSON' as a fallback, then click 'Refresh Status'. "
+                "You can also force trusted mode with NOTEBOOKLM_AUTH_MODE=trusted."
+            )
+        if summary:
+            return f"Authentication did not complete successfully: {summary[:220]}"
+        return "Authentication did not complete successfully. Please try again."
 
     def _refresh_notebooklm_status(self) -> None:
         from ..core.notebooklm_auth import _get_auth_file_path, has_cached_auth_tokens

@@ -33,12 +33,12 @@ class _FakeClientExpired:
         raise ValueError("expired")
 
 
-def test_has_cached_auth_tokens_requires_cookies_and_csrf(tmp_path, monkeypatch):
+def test_has_cached_auth_tokens_accepts_cookie_only_payload(tmp_path, monkeypatch):
     auth_file = tmp_path / "auth.json"
     auth_file.write_text(json.dumps({"cookies": {"SID": "abc"}, "csrf_token": ""}), encoding="utf-8")
     monkeypatch.setenv("NOTEBOOKLM_AUTH_FILE", str(auth_file))
 
-    assert auth_module.has_cached_auth_tokens() is False
+    assert auth_module.has_cached_auth_tokens() is True
 
 
 def test_get_auth_tokens_raises_when_missing(tmp_path, monkeypatch):
@@ -95,3 +95,43 @@ def test_get_auth_tokens_returns_tokens_when_valid(tmp_path, monkeypatch):
 
     assert tokens.csrf_token == "csrf-token"
     assert tokens.cookies.get("SID") == "abc"
+
+
+def test_normalize_auth_payload_rejects_invalid_shape():
+    try:
+        auth_module.normalize_auth_payload({"cookies": [], "csrf_token": "csrf"})
+    except ValueError as exc:
+        assert "cookies" in str(exc).lower()
+    else:
+        raise AssertionError("normalize_auth_payload should reject non-dict cookies")
+
+
+def test_normalize_auth_payload_filters_empty_cookie_values():
+    payload = auth_module.normalize_auth_payload(
+        {
+            "cookies": {
+                "SID": "abc",
+                "": "ignored",
+                "HSID": "",
+            },
+            "csrf_token": "",
+            "session_id": "",
+        }
+    )
+
+    assert payload["cookies"] == {"SID": "abc"}
+    assert payload["csrf_token"] == ""
+    assert payload["session_id"] == ""
+
+
+def test_save_auth_payload_accepts_cookie_only_payload(tmp_path, monkeypatch):
+    auth_file = tmp_path / "auth.json"
+    monkeypatch.setenv("NOTEBOOKLM_AUTH_FILE", str(auth_file))
+
+    saved_path = auth_module.save_auth_payload({"cookies": {"SID": "abc"}})
+
+    assert saved_path == auth_file
+    data = json.loads(auth_file.read_text(encoding="utf-8"))
+    assert data["cookies"] == {"SID": "abc"}
+    assert data["csrf_token"] == ""
+    assert data["session_id"] == ""

@@ -39,10 +39,19 @@ class NvidiaLLMClient:
         # Ensure the client uses OpenAI-compatible SDK format with Bearer token
         resolved_api_key = api_key.strip() or os.getenv("NVIDIA_API_KEY", "")
         if not resolved_api_key:
-            raise RuntimeError("NVIDIA_API_KEY environment variable is not set. Add it to your .env file.")
+            # In the installed app the key is injected from config.json at
+            # pipeline runtime.  A hard crash here would prevent the runner
+            # from ever reaching the injection point.  Log a warning instead;
+            # actual API calls will fail with a clear auth error.
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "NvidiaLLMClient created without an API key. "
+                "Set it in Settings or via the NVIDIA_API_KEY env var."
+            )
+            resolved_api_key = ""
         self.client = OpenAI(
             base_url=self.host,
-            api_key=resolved_api_key
+            api_key=resolved_api_key or "placeholder-will-fail-at-call-time"
         )
 
     def generate(self, prompt: str, model: str | None = None) -> str:

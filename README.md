@@ -58,6 +58,10 @@ Notes:
 
 - The app persists operational settings in the user-data config JSON, not only in .env.
 - .env is used for environment-backed credentials and local Docker startup values.
+- NotebookLM auth now defaults to trusted-browser-first mode with automatic fallback.
+- Optional overrides:
+	- `NOTEBOOKLM_AUTH_MODE=auto|trusted|playwright`
+	- `NOTEBOOKLM_CHROMIUM_EXECUTABLE=C:\\Path\\To\\chrome.exe`
 
 ## Launcher and Docker Runtime
 

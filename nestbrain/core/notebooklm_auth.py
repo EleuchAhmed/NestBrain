@@ -27,6 +27,37 @@ class NotebookLMAuthRequiredError(RuntimeError):
     """Raised when NotebookLM credentials are missing or no longer valid."""
 
 
+def normalize_auth_payload(payload: dict) -> dict:
+    """Normalize and validate NotebookLM auth payload shape before persistence."""
+    if not isinstance(payload, dict):
+        raise ValueError("Auth payload must be a JSON object.")
+
+    raw_cookies = payload.get("cookies", {})
+    if not isinstance(raw_cookies, dict):
+        raise ValueError("Auth payload must include a 'cookies' object.")
+
+    cookies = {
+        str(key).strip(): str(value).strip()
+        for key, value in raw_cookies.items()
+        if str(key).strip() and str(value).strip()
+    }
+    if not cookies:
+        raise ValueError("Auth payload must include at least one non-empty cookie.")
+
+    csrf_token = str(payload.get("csrf_token", "")).strip()
+    session_id = str(payload.get("session_id", "")).strip()
+    normalized = {
+        "cookies": cookies,
+        "csrf_token": csrf_token,
+        "session_id": session_id,
+    }
+
+    if "updated_at" in payload:
+        normalized["updated_at"] = str(payload.get("updated_at", "")).strip()
+
+    return normalized
+
+
 def _get_auth_file_path() -> Path:
     """Return the preferred auth.json path with legacy fallback migration."""
     override = os.getenv("NOTEBOOKLM_AUTH_FILE", "").strip()
@@ -70,9 +101,10 @@ def _try_migrate_legacy_auth(legacy_path: Path, primary_path: Path) -> bool:
 
 def save_auth_payload(payload: dict) -> Path:
     """Persist NotebookLM auth payload to the preferred writable location."""
+    normalized_payload = normalize_auth_payload(payload)
     auth_file = _get_auth_file_path()
     auth_file.parent.mkdir(parents=True, exist_ok=True)
-    auth_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    auth_file.write_text(json.dumps(normalized_payload, indent=2), encoding="utf-8")
     return auth_file
 
 def _load_auth_tokens() -> Optional[AuthTokens]:
@@ -90,8 +122,8 @@ def _load_auth_tokens() -> Optional[AuthTokens]:
         cookies = {str(k): str(v) for k, v in cookies.items() if str(k).strip() and str(v).strip()}
         csrf_token = str(data.get('csrf_token', '')).strip()
         session_id = str(data.get('session_id', '')).strip()
-        if not cookies or not csrf_token:
-            logger.warning("Auth file is missing required NotebookLM cookie/CSRF data.")
+        if not cookies:
+            logger.warning("Auth file is missing required NotebookLM cookies.")
             return None
         return AuthTokens(
             cookies=cookies,

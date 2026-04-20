@@ -25,6 +25,17 @@ class NvidiaNIMClient:
         if not self.api_key:
             logger.warning("NVIDIA_API_KEY is not set. API calls will fail.")
 
+    def configure(self, api_key: str) -> None:
+        """Update the API key at runtime from config.json / Settings panel.
+
+        The singleton is created at import time when the env var may not
+        yet be available.  PipelineRunner calls this before any stages
+        execute so every downstream consumer picks up the correct key.
+        """
+        resolved = (api_key or "").strip()
+        if resolved:
+            self.api_key = resolved
+
     def is_configured(self) -> bool:
         """Return True when NVIDIA credentials are available."""
         return bool(self.api_key and self.api_key.strip())

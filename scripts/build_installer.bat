@@ -46,6 +46,9 @@ if not exist "scripts\dist\Nestbrain\Nestbrain.exe" (
 echo [2/3] Resolving Inno Setup compiler...
 set "ISCC_EXE=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 if not exist "%ISCC_EXE%" (
+    set "ISCC_EXE=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+)
+if not exist "%ISCC_EXE%" (
     set "ISCC_EXE="
 )
 

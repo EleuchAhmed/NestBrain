@@ -52,6 +52,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [2/3] Installing Playwright browsers...
+set "PLAYWRIGHT_BROWSERS_PATH=0"
 python -m playwright install chromium
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to install Playwright Chromium browser.
@@ -74,6 +75,14 @@ if %ERRORLEVEL% NEQ 0 (
 
 if not exist "dist\Nestbrain\Nestbrain.exe" (
     echo [ERROR] PyInstaller output missing: scripts\dist\Nestbrain\Nestbrain.exe
+    exit /b 1
+)
+
+set "CHROMIUM_FOUND="
+for /f %%F in ('dir /s /b "dist\Nestbrain\chrome.exe" 2^>nul') do set "CHROMIUM_FOUND=1"
+if not defined CHROMIUM_FOUND (
+    echo [ERROR] Bundled Chromium runtime not found in scripts\dist\Nestbrain.
+    echo [ERROR] NotebookLM authentication in installer builds will fail without this artifact.
     exit /b 1
 )
 

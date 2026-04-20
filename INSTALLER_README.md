@@ -52,3 +52,34 @@ scripts\build_installer.bat
 - Installer source directory is `scripts/dist/Nestbrain` and must match PyInstaller COLLECT output name exactly.
 - Version is pinned to `1.0.0` across installer metadata and version info.
 - Replace placeholder content in `installer_assets/` before distribution if needed.
+- Playwright Chromium is now bundled into the frozen app for NotebookLM auth. `scripts/build.bat` enforces this by failing the build when Chromium is missing from `scripts/dist/Nestbrain`.
+
+## NotebookLM Authentication Modes (Phase 2)
+
+Installed desktop builds now use a trusted-browser-first strategy for NotebookLM login:
+
+1. Try trusted system browser profile mode (Chrome/Edge on Windows).
+2. If trusted mode fails, fallback to bundled Playwright Chromium mode.
+
+This behavior reduces Google "browser/app may not be secure" failures in packaged builds.
+
+### Optional Environment Overrides
+
+- `NOTEBOOKLM_AUTH_MODE=auto`
+	- Default behavior (trusted mode first, fallback second).
+- `NOTEBOOKLM_AUTH_MODE=trusted`
+	- Force trusted mode only.
+- `NOTEBOOKLM_AUTH_MODE=playwright`
+	- Force fallback mode only.
+- `NOTEBOOKLM_CHROMIUM_EXECUTABLE=C:\\Path\\To\\chrome.exe`
+	- Force a specific Chrome/Edge executable for trusted mode.
+
+### Troubleshooting
+
+- If Google rejects sign-in as insecure:
+	- Retry in trusted mode (`NOTEBOOKLM_AUTH_MODE=trusted`).
+	- Use the Settings fallback button `Import Auth JSON`.
+- If trusted mode cannot locate a browser:
+	- Install Chrome or Edge, or set `NOTEBOOKLM_CHROMIUM_EXECUTABLE`.
+- If both modes fail:
+	- Check `%LOCALAPPDATA%\\Nestbrain\\logs\\notebooklm_auth.log` and app logs for mode-specific errors.

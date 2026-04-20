@@ -9,4 +9,6 @@ numpy>=1.26
 matplotlib>=3.9
 notebooklm-py>=0.3.4
 python-dotenv>=1.0.1
+playwright>=1.52
+cryptography>=44.0.0
 

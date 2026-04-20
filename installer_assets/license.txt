@@ -107,7 +107,6 @@ the same subject matter.
 14. CONTACT
 
 For licensing or legal inquiries, contact:
-Nestbrain
-[INSERT LEGAL CONTACT EMAIL OR ADDRESS]
+Ahmed El Euch
 
 If you do not agree to these terms, do not install or use the Software.
