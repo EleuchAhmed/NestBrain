@@ -112,6 +112,20 @@ class EntityExtractor:
                 len(scored_entities),
                 len(entities),
             )
+            
+            # If the model returned 0 high-confidence entities, use heuristic fallback
+            if not entities:
+                logger.warning("Model returned 0 entities. Falling back to heuristic extraction.")
+                entities = self._extract_entities_heuristic(master_note)
+                self.last_scored_entities = [
+                    {
+                        "entity": e,
+                        "confidence": 0.76,
+                        "justification": "Heuristic extraction fallback due to empty model response.",
+                    }
+                    for e in entities
+                ]
+
             self.used_fallback = False
             self.last_error = ""
             return [str(e).strip() for e in entities if e]

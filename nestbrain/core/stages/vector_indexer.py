@@ -51,7 +51,7 @@ class VectorIndexer:
             # Alternatively, the embedding API requires explicit input_type="query" or "passage"
             embeddings = self.client.generate_embeddings(
                 model=self.MODEL,
-                input_texts=[content[:4000]], # naive split
+                input_texts=[content[:1500]], # naive split
                 input_type="passage"
             )
             

@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from notebooklm.auth import AuthTokens
@@ -146,15 +147,33 @@ async def get_auth_tokens() -> AuthTokens:
     Returns authenticated AuthTokens ready for use with NotebookLMClient.
     """
     tokens = _load_auth_tokens()
-    
+
     if tokens:
         logger.info("Cached auth tokens found. Validating session health...")
         try:
             async with NotebookLMClient(tokens) as client:
-                await client.refresh_auth()
-            logger.info("Session health check passed.")
+                # Add a timeout to prevent hanging on startup or during pipeline steps.
+                refreshed = await asyncio.wait_for(client.refresh_auth(), timeout=30.0)
+
+                if refreshed:
+                    # IMPORTANT: Persist the refreshed tokens to prevent them from expiring
+                    # while the application is closed.
+                    payload = {
+                        "cookies": refreshed.cookies,
+                        "csrf_token": refreshed.csrf_token,
+                        "session_id": refreshed.session_id,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    save_auth_payload(payload)
+                    logger.info("Session health check passed and tokens updated.")
+                    return refreshed
+
+            logger.info("Session health check passed (no refresh needed).")
             return tokens
-        except (NotebookLMClientAuthError, NotebookLMError, ValueError) as e:
+        except asyncio.TimeoutError as e:
+            logger.error("Session health check timed out after 30 seconds.")
+            raise NotebookLMAuthRequiredError("NotebookLM health check timed out. Please check your connection.") from e
+        except (NotebookLMClientAuthError, NotebookLMError, ValueError, Exception) as e:
             logger.warning(f"Session health check failed: {e}. Cookies may have expired.")
             raise NotebookLMAuthRequiredError("NotebookLM authentication expired. Please re-authenticate.") from e
     else:
